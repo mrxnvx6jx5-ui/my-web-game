@@ -1,32 +1,71 @@
-# my-web-game
+# Cosmic Crusade
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A retro top-down space shooter with a story-mode campaign, built with React + TypeScript + Vite. Blast aliens, collect space gems, topple bosses, and save the galaxy across 10 sectors — with affectionate nods to *Star Trek* and *Star Wars*.
 
-Currently, two official plugins are available:
+## Gameplay
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **10 sectors (worlds)**, each with **4 bosses**. Each boss is guarded by **3 levels** you clear before the boss fight.
+- **Defeat 2 of a sector's 4 bosses** to unlock the next sector.
+- **3 lives.** When they run out, it's game over and your run is recorded on the leaderboard.
+- **Laser blasters:** start with the Pulse Laser and unlock a new blaster each time you clear a sector (up to 10). Toggle your active blaster any time in the **Armory** (or with `Q`/`E` and `1`–`9` in-game).
+- **Space gems** give points. Special ammo gems grant temporary power-ups: Rapid Fire, Spread Shot, Plasma Rounds, and Homing Missiles. A rare Med-Kit grants an extra life.
+- **Score** rewards gems collected, aliens blasted, and fast level/boss completion (time bonus).
+- Synthesized retro sound effects and background music (toggle in the top-right during play).
 
-## React Compiler
+### Controls
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Action | Keys |
+| --- | --- |
+| Move | Arrow keys / `WASD` |
+| Fire | `Space` (hold) |
+| Switch blaster | `Q` / `E`, or `1`–`9` |
+| Pause | `P` / `Esc` |
 
-## Expanding the Oxlint configuration
+## Develop
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev      # start the dev server
+npm run build    # typecheck + production build
+npm run lint     # oxlint
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Leaderboard (optional Supabase backend)
+
+Scores are always saved locally (`localStorage`). To enable a **global** leaderboard, set
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env` and create this table in the
+Supabase SQL editor:
+
+```sql
+create table if not exists leaderboard (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  score integer not null,
+  worlds integer not null default 0,
+  bosses integer not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table leaderboard enable row level security;
+create policy "read all"   on leaderboard for select using (true);
+create policy "insert all" on leaderboard for insert with check (true);
+```
+
+If the table or credentials are missing, the game silently falls back to local scores.
+
+## Project structure
+
+```
+src/
+  game/
+    types.ts      shared types
+    content.ts    worlds, bosses, blasters, gems (data-driven)
+    audio.ts      Web Audio synthesized SFX + music
+    engine.ts     canvas game engine (loop, player, aliens, gems, bosses)
+  lib/
+    storage.ts    progress persistence (localStorage)
+    leaderboard.ts Supabase + localStorage leaderboard
+    supabase.ts   Supabase client
+  components/
+    GameCanvas.tsx canvas host for the engine
+  App.tsx         screen orchestration (title, map, boss select, armory, HUD, game over)
+```
