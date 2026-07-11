@@ -28,6 +28,7 @@
   image-rendering: pixelated;
   box-shadow: 0 0 60px rgba(94, 240, 255, 0.15);
   background: #05060a;
+  touch-action: none; /* let the engine own drag gestures (no scroll/zoom) */
 }
 
 /* ---------- Generic screen / overlay ---------- */
@@ -230,6 +231,34 @@
   width: 34px; height: 34px; border-radius: 6px; cursor: pointer; font-size: 15px;
 }
 .icon-btn:hover { border-color: #5ef0ff; }
+
+/* Touch-controls toggle on the title screen */
+.touch-toggle { margin: 18px auto 0; display: inline-block; }
+.touch-toggle.on { border-color: #5eff8a; color: #5eff8a; }
+
+/* On-screen buttons shown during play when touch controls are enabled */
+.touch-controls {
+  position: absolute; bottom: 22px; right: 18px;
+  display: flex; gap: 12px; pointer-events: none;
+}
+.touch-btn {
+  pointer-events: auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 68px; height: 68px; border-radius: 50%;
+  background: rgba(10, 14, 30, 0.6);
+  border: 2px solid #5ef0ff; color: #cfe0ff;
+  box-shadow: 0 0 16px rgba(94, 240, 255, 0.25);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none; touch-action: manipulation;
+}
+.touch-btn:active { background: rgba(94, 240, 255, 0.2); transform: scale(0.94); }
+.touch-btn-icon { font-size: 22px; line-height: 1; }
+.touch-btn-label { font-size: 10px; letter-spacing: 1px; margin-top: 2px; }
+
+@media (max-width: 520px) {
+  .touch-controls { bottom: 16px; right: 12px; }
+  .touch-btn { width: 60px; height: 60px; }
+}
 
 /* ---------- Modals ---------- */
 .stat-rows { margin: 18px 0; text-align: left; }

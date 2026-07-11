@@ -23,6 +23,19 @@ function countDefeated(progress: Progress, world: number): number {
   return n
 }
 
+const IS_TOUCH_DEVICE = typeof window !== 'undefined' &&
+  (('ontouchstart' in window) || (navigator.maxTouchPoints ?? 0) > 0)
+const TOUCH_KEY = 'cosmic-crusade-touch'
+
+function loadTouchPref(): boolean {
+  try {
+    const saved = localStorage.getItem(TOUCH_KEY)
+    return saved === null ? IS_TOUCH_DEVICE : saved === '1'
+  } catch {
+    return IS_TOUCH_DEVICE
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('title')
   const [progress, setProgress] = useState<Progress>(() => loadProgress())
@@ -35,14 +48,22 @@ export default function App() {
   const [reward, setReward] = useState<{ world?: number; blaster?: string } | null>(null)
   const [muted, setMuted] = useState(false)
   const [musicOn, setMusicOn] = useState(true)
+  const [touchControls, setTouchControls] = useState<boolean>(loadTouchPref)
 
   const engineRef = useRef<GameEngine | null>(null)
 
   const onEngineReady = useCallback((engine: GameEngine) => {
     engineRef.current = engine
     engine.setOwnedBlasters(progress.blasters)
+    engine.setTouchControls(touchControls)
     engine.pause()
-  }, [progress.blasters])
+  }, [progress.blasters, touchControls])
+
+  // Keep the engine + storage in sync when the touch-controls option changes.
+  useEffect(() => {
+    try { localStorage.setItem(TOUCH_KEY, touchControls ? '1' : '0') } catch { /* ignore */ }
+    engineRef.current?.setTouchControls(touchControls)
+  }, [touchControls])
 
   const onHud = useCallback((h: HudState) => setHud(h), [])
 
@@ -138,6 +159,8 @@ export default function App() {
     engineRef.current?.setBlaster(id)
     setHud((h) => (h ? { ...h } : h))
   }
+  const cycleBlaster = () => engineRef.current?.cycleBlaster(1)
+  const pauseGame = () => engineRef.current?.togglePause()
 
   return (
     <div className="app-root">
@@ -146,7 +169,10 @@ export default function App() {
       )}
 
       {screen === 'title' && (
-        <TitleScreen progress={progress} onStart={startRun} onLeaderboard={() => setScreen('leaderboard')} />
+        <TitleScreen progress={progress} onStart={startRun}
+          onLeaderboard={() => setScreen('leaderboard')}
+          touchControls={touchControls}
+          onToggleTouch={() => { audio.uiClick(); setTouchControls((v) => !v) }} />
       )}
 
       {screen === 'worldMap' && (
@@ -178,8 +204,9 @@ export default function App() {
       )}
 
       {screen === 'playing' && hud && (
-        <PlayingOverlay hud={hud} muted={muted} musicOn={musicOn}
+        <PlayingOverlay hud={hud} muted={muted} musicOn={musicOn} touch={touchControls}
           onToggleMute={toggleMute} onToggleMusic={toggleMusic}
+          onCycleBlaster={cycleBlaster} onPause={pauseGame}
           onQuit={quitToTitle} />
       )}
 
@@ -224,8 +251,12 @@ export default function App() {
 
 /* ------------------------------ Screens ------------------------------ */
 
-function TitleScreen({ progress, onStart, onLeaderboard }: {
-  progress: Progress; onStart: () => void; onLeaderboard: () => void
+function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggleTouch }: {
+  progress: Progress
+  onStart: () => void
+  onLeaderboard: () => void
+  touchControls: boolean
+  onToggleTouch: () => void
 }) {
   return (
     <div className="screen title-screen">
@@ -242,8 +273,13 @@ function TitleScreen({ progress, onStart, onLeaderboard }: {
           <span>Worlds Unlocked: <b>{progress.unlockedWorld + 1}/{TOTAL_WORLDS}</b></span>
           <span>Blasters: <b>{progress.blasters.length}/{BLASTERS.length}</b></span>
         </div>
+        <button className={`btn small touch-toggle ${touchControls ? 'on' : ''}`} onClick={onToggleTouch}>
+          📱 Touch Controls: {touchControls ? 'ON' : 'OFF'}
+        </button>
         <div className="controls-hint">
-          <b>Controls:</b> Arrows / WASD to move · Space to shoot · Q/E or 1–9 to switch blaster · P/Esc to pause
+          {touchControls
+            ? <><b>Touch:</b> Drag anywhere to move · auto-fire while touching · on-screen buttons swap blaster &amp; pause</>
+            : <><b>Controls:</b> Arrows / WASD to move · Space to shoot · Q/E or 1–9 to switch blaster · P/Esc to pause</>}
         </div>
       </div>
     </div>
@@ -380,12 +416,15 @@ function Armory({ progress, activeBlaster, onSelect, onBack }: {
   )
 }
 
-function PlayingOverlay({ hud, muted, musicOn, onToggleMute, onToggleMusic, onQuit }: {
+function PlayingOverlay({ hud, muted, musicOn, touch, onToggleMute, onToggleMusic, onCycleBlaster, onPause, onQuit }: {
   hud: HudState
   muted: boolean
   musicOn: boolean
+  touch: boolean
   onToggleMute: () => void
   onToggleMusic: () => void
+  onCycleBlaster: () => void
+  onPause: () => void
   onQuit: () => void
 }) {
   return (
@@ -393,8 +432,17 @@ function PlayingOverlay({ hud, muted, musicOn, onToggleMute, onToggleMusic, onQu
       <div className="top-controls">
         <button className="icon-btn" onClick={onToggleMute} title="Sound">{muted ? '🔇' : '🔊'}</button>
         <button className="icon-btn" onClick={onToggleMusic} title="Music">{musicOn ? '🎵' : '🔕'}</button>
+        <button className="icon-btn" onClick={onPause} title="Pause">{hud.paused ? '▶' : '⏸'}</button>
         <button className="icon-btn" onClick={onQuit} title="Quit to menu">✕</button>
       </div>
+      {touch && (
+        <div className="touch-controls">
+          <button className="touch-btn" onClick={onCycleBlaster} title="Switch blaster">
+            <span className="touch-btn-icon">🔫</span>
+            <span className="touch-btn-label">SWAP</span>
+          </button>
+        </div>
+      )}
       {hud.paused && <div className="pause-hint" />}
     </div>
   )

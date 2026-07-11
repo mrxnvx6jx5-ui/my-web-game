@@ -101,6 +101,11 @@ export class GameEngine {
   private invuln = 0
   private keys: Record<string, boolean> = {}
 
+  // Touch controls (drag to move, auto-fire while touching)
+  private touchEnabled = false
+  private touchActive = false
+  private lastTouch: { x: number; y: number } | null = null
+
   constructor(canvas: HTMLCanvasElement, cb: Callbacks) {
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('no 2d context')
@@ -231,12 +236,58 @@ export class GameEngine {
     document.removeEventListener('visibilitychange', this.onVisibility)
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('keyup', this.onKeyUp)
+    const c = this.ctx.canvas
+    c.removeEventListener('touchstart', this.onTouchStart)
+    c.removeEventListener('touchmove', this.onTouchMove)
+    c.removeEventListener('touchend', this.onTouchEnd)
+    c.removeEventListener('touchcancel', this.onTouchEnd)
   }
 
   // ---- Input ----
   private bindInput() {
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
+    const c = this.ctx.canvas
+    c.addEventListener('touchstart', this.onTouchStart, { passive: false })
+    c.addEventListener('touchmove', this.onTouchMove, { passive: false })
+    c.addEventListener('touchend', this.onTouchEnd)
+    c.addEventListener('touchcancel', this.onTouchEnd)
+  }
+
+  /** Enable/disable on-canvas touch controls (drag to move, auto-fire). */
+  setTouchControls(on: boolean) {
+    this.touchEnabled = on
+    if (!on) { this.touchActive = false; this.lastTouch = null }
+  }
+
+  private touchPoint(t: Touch): { x: number; y: number } {
+    const rect = this.ctx.canvas.getBoundingClientRect()
+    const sx = W / (rect.width || 1)
+    const sy = H / (rect.height || 1)
+    return { x: (t.clientX - rect.left) * sx, y: (t.clientY - rect.top) * sy }
+  }
+  private onTouchStart = (e: TouchEvent) => {
+    if (!this.touchEnabled) return
+    e.preventDefault()
+    this.lastTouch = this.touchPoint(e.touches[0])
+    this.touchActive = true
+    audio.unlock()
+  }
+  private onTouchMove = (e: TouchEvent) => {
+    if (!this.touchEnabled || !this.touchActive) return
+    e.preventDefault()
+    const p = this.touchPoint(e.touches[0])
+    if (this.lastTouch) {
+      // Relative drag: ship follows the finger's movement 1:1, so it never
+      // sits hidden under the fingertip.
+      this.px = Math.max(24, Math.min(W - 24, this.px + (p.x - this.lastTouch.x)))
+      this.py = Math.max(H * 0.45, Math.min(H - 30, this.py + (p.y - this.lastTouch.y)))
+    }
+    this.lastTouch = p
+  }
+  private onTouchEnd = () => {
+    this.touchActive = false
+    this.lastTouch = null
   }
   private onKeyDown = (e: KeyboardEvent) => {
     const k = e.key.toLowerCase()
@@ -358,7 +409,8 @@ export class GameEngine {
     this.px = Math.max(24, Math.min(W - 24, this.px))
     this.py = Math.max(H * 0.45, Math.min(H - 30, this.py))
 
-    if (this.keys[' ']) this.fire()
+    // Fire on Space (keyboard) or while a touch is held (mobile auto-fire).
+    if (this.keys[' '] || (this.touchEnabled && this.touchActive)) this.fire()
 
     // Stars
     for (const s of this.stars) {
@@ -770,6 +822,12 @@ export class GameEngine {
       ctx.font = '18px "Courier New", monospace'
       ctx.fillStyle = '#ffffff'
       ctx.fillText(world.name, W / 2, H / 2 + 22)
+      ctx.font = '13px "Courier New", monospace'
+      ctx.fillStyle = '#9fb0d0'
+      ctx.fillText(
+        this.touchEnabled ? 'Drag to move · auto-fire while touching' : 'Move: arrows/WASD · Fire: Space',
+        W / 2, H / 2 + 48,
+      )
       ctx.globalAlpha = 1
     }
 
