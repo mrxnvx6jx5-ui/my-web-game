@@ -15,6 +15,8 @@ interface Bullet {
   x: number; y: number; vx: number; vy: number; r: number
   dmg: number; color: string; pierce: boolean; homing: boolean
   hits: Set<number>
+  /** Position at the start of the frame, for swept collision vs fast targets. */
+  px0?: number; py0?: number
 }
 interface EBullet { x: number; y: number; vx: number; vy: number; r: number; homing?: boolean; dead?: boolean }
 interface Alien {
@@ -68,6 +70,16 @@ const SHIELD_HIT_COST = 34
 const SHIELD_GEM_RESTORE = 50
 // Asteroids start appearing from this world index (0-based) onward.
 const ASTEROID_FROM_WORLD = 2
+
+/** Shortest distance from point (px,py) to the segment (ax,ay)->(bx,by). */
+function segPointDist(ax: number, ay: number, bx: number, by: number, px: number, py: number): number {
+  const dx = bx - ax, dy = by - ay
+  const len2 = dx * dx + dy * dy
+  let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0
+  t = Math.max(0, Math.min(1, t))
+  const cx = ax + t * dx, cy = ay + t * dy
+  return Math.hypot(px - cx, py - cy)
+}
 
 export class GameEngine {
   private ctx: CanvasRenderingContext2D
@@ -502,6 +514,7 @@ export class GameEngine {
 
     // Player bullets
     for (const b of this.bullets) {
+      b.px0 = b.x; b.py0 = b.y // remember frame-start position for swept collision
       if (b.homing) {
         const target = this.nearestEnemy(b.x, b.y)
         if (target) {
@@ -813,12 +826,16 @@ export class GameEngine {
     }
     // (explosions happen in the update loop when hp hits 0)
 
-    // player lasers shoot down incoming enemy fire
+    // player lasers shoot down incoming enemy fire. Both bullets move fast, so
+    // test the player bullet's swept path this frame (start -> end) against the
+    // enemy bullet — otherwise the two can cross between frames without ever
+    // being within the hit radius (tunneling).
     for (const b of this.bullets) {
       if (b.y < -900) continue
+      const ax = b.px0 ?? b.x, ay = b.py0 ?? b.y
       for (const e of this.ebullets) {
         if (e.dead) continue
-        if (Math.hypot(b.x - e.x, b.y - e.y) < e.r + b.r + 1) {
+        if (segPointDist(ax, ay, b.x, b.y, e.x, e.y) < e.r + b.r + 3) {
           e.dead = true
           this.score += 5
           this.spawnParticles(e.x, e.y, '#ffd65e', 5)
