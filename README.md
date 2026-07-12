@@ -1,10 +1,12 @@
 # Cosmic Crusade
 
-A retro top-down space shooter with a story-mode campaign, built with React + TypeScript + Vite. Blast aliens, collect space gems, topple bosses, and save the galaxy across 10 sectors — with affectionate nods to *Star Trek* and *Star Wars*.
+A retro top-down space shooter with a story-mode campaign, built with React + TypeScript + Vite. Blast alien fleets, void monsters, and derelict war-machines across 10 original deep-space sectors — collect space gems, topple bosses, and save the galaxy.
 
 ## Gameplay
 
-- **10 sectors (worlds)**, each with **4 bosses**. Each boss is guarded by **3 levels** you clear before the boss fight.
+- **10 sectors (worlds)** — from the Rimward Frontier to the Galactic Core — each with **4 bosses**. Each boss is guarded by **3 levels** you clear before the boss fight.
+- **Enemies** come in three flavors: alien fighter **ships**, fleshy **alien creatures**, and hulking **space monsters**.
+- **Unique bosses.** Every boss has a signature weapon — spread volleys, targeted bursts, spiral storms, bullet rings, shotgun clusters, homing orbs, sweeping walls, or slow-drifting **space mines** that explode into shrapnel (shoot them early or dodge them).
 - **Defeat 2 of a sector's 4 bosses** to unlock the next sector.
 - **Shields.** You start every level with full shields that absorb hits before you lose a life. Some gems drop **shield recharge cells**, and a rare Med-Kit grants an extra life.
 - **3 lives.** When they run out, it's game over and your run is recorded on the leaderboard.

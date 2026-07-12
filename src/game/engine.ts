@@ -5,7 +5,7 @@
 import { audio } from './audio'
 import { BLASTERS, DIFFICULTIES, GEMS, GEM_DROP_POOL, WORLDS } from './content'
 import type {
-  AmmoType, BlasterDef, Difficulty, DifficultyMod, HudState, RunStats, StageConfig, StageResult,
+  AmmoType, BlasterDef, BossWeapon, Difficulty, DifficultyMod, HudState, RunStats, StageConfig, StageResult,
 } from './types'
 
 export const W = 900
@@ -16,7 +16,7 @@ interface Bullet {
   dmg: number; color: string; pierce: boolean; homing: boolean
   hits: Set<number>
 }
-interface EBullet { x: number; y: number; vx: number; vy: number; r: number }
+interface EBullet { x: number; y: number; vx: number; vy: number; r: number; homing?: boolean }
 interface Alien {
   id: number; x: number; y: number; w: number; h: number
   hp: number; maxHp: number; type: number; points: number
@@ -26,7 +26,11 @@ interface Boss {
   id: number; x: number; y: number; w: number; h: number
   hp: number; maxHp: number; t: number; fireCd: number
   dir: number; name: string; title: string; color: string; spawnCd: number
-  flash: number
+  flash: number; weapon: BossWeapon; ang: number
+}
+interface Mine {
+  id: number; x: number; y: number; vx: number; vy: number
+  r: number; hp: number; fuse: number; pulse: number
 }
 interface Gem {
   id: string; x: number; y: number; vx: number; vy: number; r: number; t: number
@@ -98,6 +102,7 @@ export class GameEngine {
   private ebullets: EBullet[] = []
   private gems: Gem[] = []
   private asteroids: Asteroid[] = []
+  private mines: Mine[] = []
   private particles: Particle[] = []
   private floats: FloatText[] = []
   private stars: Star[] = []
@@ -175,6 +180,7 @@ export class GameEngine {
     this.ebullets = []
     this.gems = []
     this.asteroids = []
+    this.mines = []
     this.particles = []
     this.floats = []
     this.boss = null
@@ -380,8 +386,28 @@ export class GameEngine {
       id: this.idc++, x: W / 2, y: 110, w: 140, h: 90,
       hp, maxHp: hp, t: 0, fireCd: 1.2, dir: 1,
       name: bdef.name, title: bdef.title, color: bdef.color,
-      spawnCd: 3, flash: 0,
+      spawnCd: 3, flash: 0, weapon: bdef.weapon, ang: 0,
     }
+  }
+
+  private spawnMine(x: number, y: number) {
+    this.mines.push({
+      id: this.idc++, x, y,
+      vx: (Math.random() - 0.5) * 30,
+      vy: (35 + Math.random() * 25) * this.diff.enemySpeedMul,
+      r: 13, hp: 2, fuse: 5 + Math.random() * 2, pulse: 0,
+    })
+  }
+
+  private explodeMine(m: Mine) {
+    const n = 8 + Math.floor(this.cfg.world / 2)
+    const sp = (140 + this.cfg.world * 6) * this.diff.bulletSpeedMul
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * Math.PI * 2
+      this.ebullets.push({ x: m.x, y: m.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 5 })
+    }
+    this.spawnParticles(m.x, m.y, '#ff8a5e', 22)
+    audio.explosion()
   }
 
   // ---- Firing ----
@@ -534,8 +560,34 @@ export class GameEngine {
     }
     this.asteroids = this.asteroids.filter((a) => a.y < H + a.r + 20)
 
-    // Enemy bullets
-    for (const e of this.ebullets) { e.x += e.vx * dt; e.y += e.vy * dt }
+    // Space mines: slow drifting bombs that explode on contact or when their fuse burns out
+    for (const m of this.mines) {
+      m.pulse += dt
+      // drift slowly, gently steering toward the player
+      const dx = this.px - m.x
+      m.vx += Math.sign(dx) * 12 * dt
+      m.vx = Math.max(-70, Math.min(70, m.vx))
+      m.x += m.vx * dt
+      m.y += m.vy * dt
+      if (m.y > ENEMY_FLOOR) m.vy = Math.min(m.vy, 20) // linger near the floor rather than leaving
+      m.fuse -= dt
+      if (m.fuse <= 0) m.hp = 0
+    }
+    for (const m of this.mines) if (m.hp <= 0) this.explodeMine(m)
+    this.mines = this.mines.filter((m) => m.hp > 0 && m.y < H + 40)
+
+    // Enemy bullets (some boss orbs home in on the player)
+    for (const e of this.ebullets) {
+      if (e.homing) {
+        const dx = this.px - e.x, dy = this.py - e.y
+        const d = Math.hypot(dx, dy) || 1
+        const sp = Math.hypot(e.vx, e.vy) || 1
+        e.vx += ((dx / d) * sp - e.vx) * Math.min(1, dt * 1.8)
+        e.vy += ((dy / d) * sp - e.vy) * Math.min(1, dt * 1.8)
+      }
+      e.x += e.vx * dt
+      e.y += e.vy * dt
+    }
     this.ebullets = this.ebullets.filter((e) => e.y < H + 20 && e.y > -20 && e.x > -20 && e.x < W + 20)
 
     // Gems
@@ -572,26 +624,95 @@ export class GameEngine {
 
     boss.fireCd -= dt
     if (boss.fireCd <= 0) {
-      boss.fireCd = Math.max(0.3, (1.4 - this.cfg.world * 0.07) * this.diff.enemyFireMul)
-      const n = 5 + Math.floor(this.cfg.world / 2)
-      const sp = (170 + this.cfg.world * 9) * this.diff.bulletSpeedMul
-      for (let i = 0; i < n; i++) {
-        const ang = Math.PI / 2 + (i - (n - 1) / 2) * 0.25
-        this.ebullets.push({ x: boss.x, y: boss.y + boss.h / 2, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 6 })
-      }
-      // aimed shot
-      const dx = this.px - boss.x, dy = this.py - boss.y
-      const d = Math.hypot(dx, dy) || 1
-      this.ebullets.push({ x: boss.x, y: boss.y + boss.h / 2, vx: (dx / d) * sp * 1.2, vy: (dy / d) * sp * 1.2, r: 7 })
+      boss.fireCd = this.fireBossWeapon(boss)
       audio.enemyShoot()
     }
 
     boss.spawnCd -= dt
     const bossMinionCap = Math.max(2, Math.round(3 * this.diff.maxConcurrentMul))
-    if (boss.spawnCd <= 0 && this.aliens.length < bossMinionCap) {
+    if (boss.spawnCd <= 0 && this.aliens.length < bossMinionCap && boss.weapon !== 'mines') {
       boss.spawnCd = 4 * this.diff.spawnRateMul
       this.spawnAlien()
     }
+  }
+
+  /** Each boss has a signature attack. Returns the cooldown until the next volley. */
+  private fireBossWeapon(boss: Boss): number {
+    const ox = boss.x, oy = boss.y + boss.h / 2
+    const sp = (170 + this.cfg.world * 9) * this.diff.bulletSpeedMul
+    const fireMul = this.diff.enemyFireMul
+    const shoot = (vx: number, vy: number, r = 6) => this.ebullets.push({ x: ox, y: oy, vx, vy, r })
+    const aimAt = (mult = 1) => {
+      const dx = this.px - ox, dy = this.py - oy
+      const d = Math.hypot(dx, dy) || 1
+      return { vx: (dx / d) * sp * mult, vy: (dy / d) * sp * mult }
+    }
+    switch (boss.weapon) {
+      case 'spread': {
+        const n = 5 + Math.floor(this.cfg.world / 2)
+        for (let i = 0; i < n; i++) {
+          const a = Math.PI / 2 + (i - (n - 1) / 2) * 0.22
+          shoot(Math.cos(a) * sp, Math.sin(a) * sp)
+        }
+        return Math.max(0.35, 1.3 * fireMul)
+      }
+      case 'aimed': {
+        // tight targeted burst
+        const { vx, vy } = aimAt(1.25)
+        shoot(vx, vy, 7)
+        shoot(vx * 0.96, vy * 0.96, 5)
+        shoot(vx * 1.04, vy * 1.04, 5)
+        return Math.max(0.28, 0.9 * fireMul)
+      }
+      case 'spiral': {
+        boss.ang += 0.5
+        const arms = 3
+        for (let k = 0; k < arms; k++) {
+          const a = boss.ang + (k / arms) * Math.PI * 2
+          shoot(Math.cos(a) * sp, Math.sin(a) * sp)
+        }
+        return Math.max(0.1, 0.16 * fireMul)
+      }
+      case 'ring': {
+        const n = 12 + this.cfg.world
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2 + boss.t
+          shoot(Math.cos(a) * sp, Math.sin(a) * sp)
+        }
+        return Math.max(0.7, 1.8 * fireMul)
+      }
+      case 'shotgun': {
+        for (let i = 0; i < 10; i++) {
+          const a = Math.PI / 2 + (Math.random() - 0.5) * 1.1
+          const s = sp * (0.7 + Math.random() * 0.6)
+          shoot(Math.cos(a) * s, Math.sin(a) * s, 4 + Math.random() * 3)
+        }
+        return Math.max(0.5, 1.5 * fireMul)
+      }
+      case 'homing': {
+        // slow orbs that curve toward the player
+        const { vx, vy } = aimAt(0.55)
+        this.ebullets.push({ x: ox, y: oy, vx, vy, r: 8, homing: true })
+        return Math.max(0.5, 1.2 * fireMul)
+      }
+      case 'sweep': {
+        // a horizontal wall of bullets that sweeps across
+        boss.ang += 0.4
+        const off = Math.sin(boss.ang) * 0.5
+        for (let i = -3; i <= 3; i++) {
+          const a = Math.PI / 2 + i * 0.16 + off
+          shoot(Math.cos(a) * sp, Math.sin(a) * sp, 5)
+        }
+        return Math.max(0.18, 0.4 * fireMul)
+      }
+      case 'mines': {
+        // lay slow-drifting exploding mines, with the occasional aimed shot
+        this.spawnMine(ox, oy + 8)
+        if (Math.random() < 0.5) { const { vx, vy } = aimAt(1); shoot(vx, vy, 6) }
+        return Math.max(0.9, 2.2 * fireMul)
+      }
+    }
+    return 1
   }
 
   private nearestEnemy(x: number, y: number): { x: number; y: number } | null {
@@ -672,6 +793,21 @@ export class GameEngine {
       }
     }
     this.asteroids = this.asteroids.filter((a) => a.hp > 0)
+
+    // player bullets vs mines (shooting one detonates it — mind the shrapnel)
+    for (const b of this.bullets) {
+      for (const m of this.mines) {
+        if (m.hp <= 0) continue
+        if (b.hits.has(m.id)) continue
+        if (Math.hypot(b.x - m.x, b.y - m.y) < m.r + b.r) {
+          m.hp -= b.dmg
+          b.hits.add(m.id)
+          if (m.hp <= 0) { this.score += 60; this.addFloat(m.x, m.y, '+60', '#ff8a5e') }
+          if (!b.pierce) { b.y = -999; break }
+        }
+      }
+    }
+    // (explosions happen in the update loop when hp hits 0)
     this.bullets = this.bullets.filter((b) => b.y > -900)
 
     // boss death handled in checkStageEnd
@@ -680,6 +816,14 @@ export class GameEngine {
     if (this.invuln <= 0) {
       for (const e of this.ebullets) {
         if (Math.hypot(e.x - this.px, e.y - this.py) < e.r + 16) {
+          this.hurtPlayer()
+          break
+        }
+      }
+      // mine contact detonates it on the player
+      for (const m of this.mines) {
+        if (Math.hypot(m.x - this.px, m.y - this.py) < m.r + 15) {
+          m.hp = 0
           this.hurtPlayer()
           break
         }
@@ -898,6 +1042,9 @@ export class GameEngine {
     // asteroids
     for (const a of this.asteroids) this.drawAsteroid(a)
 
+    // mines
+    for (const m of this.mines) this.drawMine(m)
+
     // gems
     for (const g of this.gems) this.drawGem(g)
 
@@ -1070,45 +1217,154 @@ export class GameEngine {
   private drawAlien(a: Alien) {
     const ctx = this.ctx
     const hpFrac = a.hp / a.maxHp
+    const s = a.w / 2
     ctx.save()
     ctx.translate(a.x, a.y)
-    ctx.shadowBlur = 10
-    const colors = ['#8affc1', '#c98aff', '#ff9e5e']
-    const c = colors[a.type]
-    ctx.shadowColor = c
-    ctx.fillStyle = c
-    if (a.type === 0) {
-      // saucer
-      ctx.beginPath()
-      ctx.ellipse(0, 0, a.w / 2, a.h / 3, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = '#ffffff'
-      ctx.beginPath()
-      ctx.arc(0, -3, a.w / 6, 0, Math.PI * 2)
-      ctx.fill()
-    } else if (a.type === 1) {
-      // crab/tie-ish
-      ctx.fillRect(-a.w / 2, -a.h / 2, a.w, a.h)
-      ctx.fillStyle = '#000'
-      ctx.fillRect(-a.w / 6, -a.h / 2, a.w / 3, a.h)
-    } else {
-      // diamond drone
-      ctx.beginPath()
-      ctx.moveTo(0, -a.h / 2)
-      ctx.lineTo(a.w / 2, 0)
-      ctx.lineTo(0, a.h / 2)
-      ctx.lineTo(-a.w / 2, 0)
-      ctx.closePath()
-      ctx.fill()
-    }
+    if (a.type === 0) this.drawEnemyShip(s, a.t)
+    else if (a.type === 1) this.drawEnemyAlien(s, a.t)
+    else this.drawEnemyMonster(s, a.t)
     ctx.restore()
-    // hp bar for tanky aliens
+    // hp bar for tanky enemies
     if (a.maxHp > 1) {
       ctx.fillStyle = 'rgba(0,0,0,0.5)'
       ctx.fillRect(a.x - a.w / 2, a.y - a.h / 2 - 8, a.w, 4)
       ctx.fillStyle = '#5eff8a'
       ctx.fillRect(a.x - a.w / 2, a.y - a.h / 2 - 8, a.w * hpFrac, 4)
     }
+  }
+
+  // A metallic alien fighter craft: swept wings, cockpit, engine glow.
+  private drawEnemyShip(s: number, t: number) {
+    const ctx = this.ctx
+    // engine flare (points up — the ship dives at the player)
+    ctx.fillStyle = '#5ecbff'
+    ctx.globalAlpha = 0.8
+    ctx.beginPath()
+    ctx.moveTo(-s * 0.4, -s * 0.7)
+    ctx.lineTo(0, -s * (1.1 + Math.random() * 0.3))
+    ctx.lineTo(s * 0.4, -s * 0.7)
+    ctx.closePath()
+    ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.shadowBlur = 8
+    ctx.shadowColor = '#8fb8d8'
+    // hull (metallic grey with a nose pointing down)
+    const g = ctx.createLinearGradient(0, -s, 0, s)
+    g.addColorStop(0, '#b8c4d4'); g.addColorStop(1, '#5a6472')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(0, s)          // nose
+    ctx.lineTo(s, -s * 0.2)   // right wing tip
+    ctx.lineTo(s * 0.35, -s * 0.6)
+    ctx.lineTo(-s * 0.35, -s * 0.6)
+    ctx.lineTo(-s, -s * 0.2)  // left wing tip
+    ctx.closePath()
+    ctx.fill()
+    // cockpit (subtle pulse)
+    ctx.shadowBlur = 6
+    ctx.shadowColor = '#5ef0ff'
+    ctx.fillStyle = '#5ef0ff'
+    ctx.globalAlpha = 0.75 + 0.25 * Math.abs(Math.sin(t * 3))
+    ctx.beginPath()
+    ctx.ellipse(0, s * 0.15, s * 0.22, s * 0.3, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 1
+  }
+
+  // A fleshy alien: bulbous body, big eye, writhing tentacles.
+  private drawEnemyAlien(s: number, t: number) {
+    const ctx = this.ctx
+    ctx.shadowBlur = 12
+    ctx.shadowColor = '#c98aff'
+    // tentacles
+    ctx.strokeStyle = '#9a5ed8'
+    ctx.lineWidth = 3
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath()
+      ctx.moveTo(i * s * 0.35, s * 0.3)
+      ctx.quadraticCurveTo(i * s * 0.45 + Math.sin(t * 4 + i) * 4, s * 0.9, i * s * 0.3, s * 1.15)
+      ctx.stroke()
+    }
+    // body
+    const g = ctx.createRadialGradient(0, -s * 0.2, 2, 0, 0, s)
+    g.addColorStop(0, '#e6b8ff'); g.addColorStop(1, '#8a3ad0')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.ellipse(0, 0, s * 0.85, s, 0, 0, Math.PI * 2)
+    ctx.fill()
+    // eye
+    ctx.shadowBlur = 0
+    ctx.fillStyle = '#fff'
+    ctx.beginPath(); ctx.arc(0, -s * 0.1, s * 0.4, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#1a0a2a'
+    ctx.beginPath(); ctx.arc(Math.sin(t * 2) * s * 0.12, -s * 0.1, s * 0.18, 0, Math.PI * 2); ctx.fill()
+  }
+
+  // A hulking space monster: jagged carapace, horns, gnashing maw.
+  private drawEnemyMonster(s: number, t: number) {
+    const ctx = this.ctx
+    ctx.shadowBlur = 12
+    ctx.shadowColor = '#ff7b4a'
+    // spiky carapace
+    const g = ctx.createRadialGradient(0, -s * 0.2, 2, 0, 0, s * 1.1)
+    g.addColorStop(0, '#ffb37a'); g.addColorStop(1, '#a5431f')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    const spikes = 9
+    for (let i = 0; i < spikes * 2; i++) {
+      const ang = (i / (spikes * 2)) * Math.PI * 2
+      const rr = i % 2 === 0 ? s * 1.05 : s * 0.7
+      const px = Math.cos(ang) * rr, py = Math.sin(ang) * rr
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+    }
+    ctx.closePath()
+    ctx.fill()
+    // glowing eyes
+    ctx.shadowBlur = 8
+    ctx.shadowColor = '#ffe45e'
+    ctx.fillStyle = '#ffe45e'
+    ctx.beginPath(); ctx.arc(-s * 0.3, -s * 0.15, s * 0.14, 0, Math.PI * 2)
+    ctx.arc(s * 0.3, -s * 0.15, s * 0.14, 0, Math.PI * 2); ctx.fill()
+    // maw with teeth
+    ctx.shadowBlur = 0
+    ctx.fillStyle = '#3a0a05'
+    ctx.beginPath(); ctx.ellipse(0, s * 0.35, s * 0.5, s * 0.28 + Math.sin(t * 6) * 2, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath()
+      ctx.moveTo(i * s * 0.18, s * 0.2)
+      ctx.lineTo(i * s * 0.18 + s * 0.07, s * 0.42)
+      ctx.lineTo(i * s * 0.18 - s * 0.07, s * 0.42)
+      ctx.closePath(); ctx.fill()
+    }
+  }
+
+  private drawMine(m: Mine) {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.translate(m.x, m.y)
+    ctx.shadowBlur = 10
+    ctx.shadowColor = '#ff5e5e'
+    // spikes
+    ctx.strokeStyle = '#6b6155'
+    ctx.lineWidth = 3
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + m.pulse * 0.6
+      ctx.beginPath()
+      ctx.moveTo(Math.cos(a) * m.r * 0.7, Math.sin(a) * m.r * 0.7)
+      ctx.lineTo(Math.cos(a) * m.r * 1.35, Math.sin(a) * m.r * 1.35)
+      ctx.stroke()
+    }
+    // body
+    ctx.fillStyle = '#3a3630'
+    ctx.beginPath(); ctx.arc(0, 0, m.r, 0, Math.PI * 2); ctx.fill()
+    // blinking warning light — faster as the fuse runs down
+    const blink = (Math.sin(m.pulse * (m.fuse < 1.5 ? 22 : 8)) + 1) / 2
+    ctx.fillStyle = `rgba(255,${Math.round(60 + blink * 60)},60,${0.4 + blink * 0.6})`
+    ctx.shadowBlur = 12
+    ctx.shadowColor = '#ff3a3a'
+    ctx.beginPath(); ctx.arc(0, 0, m.r * 0.4, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
   }
 
   private drawBoss(b: Boss) {

@@ -5,7 +5,7 @@ export type Vec = { x: number; y: number }
 export interface BlasterDef {
   id: string
   name: string
-  /** Short flavor line (Star Trek / Star Wars nods). */
+  /** Short flavor line. */
   flavor: string
   color: string
   /** Seconds between shots when holding fire. */
@@ -60,11 +60,16 @@ export interface GemDef {
   life?: boolean
 }
 
+export type BossWeapon =
+  | 'spread' | 'aimed' | 'spiral' | 'ring' | 'shotgun' | 'homing' | 'sweep' | 'mines'
+
 export interface BossDef {
   name: string
   title: string
   color: string
   hp: number
+  /** The boss's signature attack — each boss in a world uses a different one. */
+  weapon: BossWeapon
 }
 
 export interface WorldDef {
