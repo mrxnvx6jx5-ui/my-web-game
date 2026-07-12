@@ -43,11 +43,18 @@ create table if not exists leaderboard (
   score integer not null,
   worlds integer not null default 0,
   bosses integer not null default 0,
+  difficulty text not null default 'normal',
   created_at timestamptz not null default now()
 );
 alter table leaderboard enable row level security;
 create policy "read all"   on leaderboard for select using (true);
 create policy "insert all" on leaderboard for insert with check (true);
+```
+
+Already have the table from an earlier version? Add the difficulty column:
+
+```sql
+alter table leaderboard add column if not exists difficulty text not null default 'normal';
 ```
 
 If the table or credentials are missing, the game silently falls back to local scores.

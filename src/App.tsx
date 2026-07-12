@@ -258,6 +258,7 @@ export default function App() {
         <GameOverScreen
           stats={lastResult.stats}
           bestScore={progress.bestScore}
+          difficulty={difficulty}
           onDone={() => setScreen('leaderboard')}
         />
       )}
@@ -565,15 +566,17 @@ function VictoryScreen({ stats, onLeaderboard }: {
   )
 }
 
-function GameOverScreen({ stats, bestScore, onDone }: {
+function GameOverScreen({ stats, bestScore, difficulty, onDone }: {
   stats: { score: number; gems: number; kills: number; bossesDefeated: number; worldsCleared: number; timeMs: number }
   bestScore: number
+  difficulty: Difficulty
   onDone: () => void
 }) {
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
   const isBest = stats.score >= bestScore && stats.score > 0
+  const diff = DIFFICULTIES[difficulty]
 
   const submit = async () => {
     setSubmitting(true)
@@ -582,6 +585,7 @@ function GameOverScreen({ stats, bestScore, onDone }: {
       score: stats.score,
       worlds: stats.worldsCleared,
       bosses: stats.bossesDefeated,
+      difficulty,
     }
     await submitScore(row)
     setSubmitting(false)
@@ -593,6 +597,7 @@ function GameOverScreen({ stats, bestScore, onDone }: {
     <div className="screen overlay-screen center-modal">
       <div className="panel narrow">
         <h2 className="danger">GAME OVER</h2>
+        <p className="gameover-diff">Difficulty: <b style={{ color: diff.color }}>{diff.label}</b></p>
         {isBest && <p className="new-best">★ NEW PERSONAL BEST ★</p>}
         <div className="stat-rows">
           <div><span>Final Score</span><b>{stats.score.toLocaleString()}</b></div>
@@ -646,14 +651,20 @@ function LeaderboardScreen({ onBack }: { onBack: () => void }) {
         {rows !== null && rows.length === 0 && <p className="hint">No scores yet. Be the first!</p>}
         {rows !== null && rows.length > 0 && (
           <ol className="leaderboard">
-            {rows.map((r, i) => (
-              <li key={i} className={i < 3 ? 'top' : ''}>
-                <span className="rank">{medals[i] || i + 1}</span>
-                <span className="lb-name">{r.name}</span>
-                <span className="lb-meta">{r.bosses}☠ · {r.worlds}🌌</span>
-                <span className="lb-score">{r.score.toLocaleString()}</span>
-              </li>
-            ))}
+            {rows.map((r, i) => {
+              const d = r.difficulty && r.difficulty in DIFFICULTIES ? DIFFICULTIES[r.difficulty] : null
+              return (
+                <li key={i} className={i < 3 ? 'top' : ''}>
+                  <span className="rank">{medals[i] || i + 1}</span>
+                  <span className="lb-name">
+                    {r.name}
+                    {d && <span className="diff-tag" style={{ '--dc': d.color } as CSSProperties}>{d.label}</span>}
+                  </span>
+                  <span className="lb-meta">{r.bosses}☠ · {r.worlds}🌌</span>
+                  <span className="lb-score">{r.score.toLocaleString()}</span>
+                </li>
+              )
+            })}
           </ol>
         )}
         <p className="source-note">{source === 'supabase' ? '☁ Global (Supabase)' : '💾 Local scores'}</p>

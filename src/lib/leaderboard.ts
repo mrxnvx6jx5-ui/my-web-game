@@ -9,19 +9,25 @@
 //     score integer not null,
 //     worlds integer not null default 0,
 //     bosses integer not null default 0,
+//     difficulty text not null default 'normal',
 //     created_at timestamptz not null default now()
 //   );
 //   alter table leaderboard enable row level security;
 //   create policy "read all"   on leaderboard for select using (true);
 //   create policy "insert all" on leaderboard for insert with check (true);
+//
+// Migrating an existing table:
+//   alter table leaderboard add column if not exists difficulty text not null default 'normal';
 
 import { supabase } from './supabase'
+import type { Difficulty } from '../game/types'
 
 export interface ScoreRow {
   name: string
   score: number
   worlds: number
   bosses: number
+  difficulty?: Difficulty
   created_at?: string
 }
 
@@ -59,6 +65,7 @@ export async function submitScore(row: ScoreRow): Promise<'supabase' | 'local'> 
         score: row.score,
         worlds: row.worlds,
         bosses: row.bosses,
+        difficulty: row.difficulty ?? 'normal',
       })
       if (!error) return 'supabase'
     } catch {
@@ -73,7 +80,7 @@ export async function fetchTop(limit = 10): Promise<{ rows: ScoreRow[]; source: 
     try {
       const { data, error } = await supabase
         .from('leaderboard')
-        .select('name, score, worlds, bosses, created_at')
+        .select('name, score, worlds, bosses, difficulty, created_at')
         .order('score', { ascending: false })
         .limit(limit)
       if (!error && data) {

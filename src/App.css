@@ -317,7 +317,14 @@
 }
 .leaderboard li.top { background: rgba(255,214,94,0.06); }
 .leaderboard .rank { text-align: center; color: #9fb0d0; }
-.leaderboard .lb-name { text-align: left; color: #dfe9ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leaderboard .lb-name { text-align: left; color: #dfe9ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+.diff-tag {
+  --dc: #5ef0ff;
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--dc); border: 1px solid var(--dc); border-radius: 4px;
+  padding: 1px 5px; flex-shrink: 0; opacity: 0.9;
+}
+.gameover-diff { font-size: 13px; color: #9fb0d0; margin: 4px 0 0; letter-spacing: 1px; }
 .leaderboard .lb-meta { color: #7c8cad; font-size: 11px; }
 .leaderboard .lb-score { color: #5ef0ff; font-weight: bold; }
 .source-note { text-align: center; color: #7c8cad; font-size: 11px; margin-top: 12px; }
