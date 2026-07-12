@@ -3,9 +3,9 @@
 // via callbacks. React only owns the menus/overlays around it.
 
 import { audio } from './audio'
-import { BLASTERS, GEMS, GEM_DROP_POOL, WORLDS } from './content'
+import { BLASTERS, DIFFICULTIES, GEMS, GEM_DROP_POOL, WORLDS } from './content'
 import type {
-  AmmoType, BlasterDef, HudState, RunStats, StageConfig, StageResult,
+  AmmoType, BlasterDef, Difficulty, DifficultyMod, HudState, RunStats, StageConfig, StageResult,
 } from './types'
 
 export const W = 900
@@ -64,6 +64,9 @@ export class GameEngine {
   private bossesDefeated = 0
   private worldsCleared = 0
   private runStartMs = 0
+
+  // Difficulty
+  private diff: DifficultyMod = DIFFICULTIES.normal
 
   // Blasters
   private owned: BlasterDef[] = [BLASTERS[0]]
@@ -172,7 +175,7 @@ export class GameEngine {
       this.spawnBoss()
     } else {
       const world = cfg.world
-      this.quota = 8 + world * 2 + cfg.level * 3
+      this.quota = Math.max(4, Math.round((8 + world * 2 + cfg.level * 3) * this.diff.quotaMul))
     }
     this.emitHud()
   }
@@ -254,6 +257,10 @@ export class GameEngine {
     c.addEventListener('touchcancel', this.onTouchEnd)
   }
 
+  setDifficulty(key: Difficulty) {
+    this.diff = DIFFICULTIES[key]
+  }
+
   /** Enable/disable on-canvas touch controls (drag to move, auto-fire). */
   setTouchControls(on: boolean) {
     this.touchEnabled = on
@@ -314,9 +321,9 @@ export class GameEngine {
     this.aliens.push({
       id: this.idc++, x, baseX: x, y: -30, w: size, h: size,
       hp, maxHp: hp, type, points,
-      vx: (Math.random() - 0.5) * 40,
-      vy: 40 + world * 5 + Math.random() * 30,
-      t: Math.random() * 6, fireCd: 1 + Math.random() * 2,
+      vx: (Math.random() - 0.5) * 40 * this.diff.enemySpeedMul,
+      vy: (40 + world * 5 + Math.random() * 30) * this.diff.enemySpeedMul,
+      t: Math.random() * 6, fireCd: (1 + Math.random() * 2) * this.diff.enemyFireMul,
     })
     this.spawned++
   }
@@ -438,10 +445,10 @@ export class GameEngine {
     // Aliens
     if (this.cfg.level !== 0) {
       this.spawnTimer -= dt
-      const maxConcurrent = 4 + this.cfg.world
+      const maxConcurrent = Math.max(2, Math.round((4 + this.cfg.world) * this.diff.maxConcurrentMul))
       if (this.spawned < this.quota && this.aliens.length < maxConcurrent && this.spawnTimer <= 0) {
         this.spawnAlien()
-        this.spawnTimer = Math.max(0.35, 1.1 - this.cfg.world * 0.06)
+        this.spawnTimer = Math.max(0.22, (1.1 - this.cfg.world * 0.06) * this.diff.spawnRateMul)
       }
     }
     for (const a of this.aliens) {
@@ -453,10 +460,10 @@ export class GameEngine {
       if (a.y > H - 90) a.y = H - 90
       a.fireCd -= dt
       if (a.fireCd <= 0 && a.y > 0) {
-        a.fireCd = 1.5 + Math.random() * 2.5
+        a.fireCd = (1.5 + Math.random() * 2.5) * this.diff.enemyFireMul
         const dx = this.px - a.x, dy = this.py - a.y
         const d = Math.hypot(dx, dy) || 1
-        const sp = 180 + this.cfg.world * 8
+        const sp = (180 + this.cfg.world * 8) * this.diff.bulletSpeedMul
         this.ebullets.push({ x: a.x, y: a.y + a.h / 2, vx: (dx / d) * sp, vy: (dy / d) * sp, r: 5 })
         audio.enemyShoot()
       }
@@ -496,16 +503,16 @@ export class GameEngine {
     const boss = this.boss!
     boss.t += dt
     if (boss.flash > 0) boss.flash -= dt
-    boss.x += boss.dir * (70 + this.cfg.world * 6) * dt
+    boss.x += boss.dir * (70 + this.cfg.world * 6) * this.diff.enemySpeedMul * dt
     if (boss.x < 90) { boss.x = 90; boss.dir = 1 }
     if (boss.x > W - 90) { boss.x = W - 90; boss.dir = -1 }
     boss.y = 110 + Math.sin(boss.t * 0.8) * 30
 
     boss.fireCd -= dt
     if (boss.fireCd <= 0) {
-      boss.fireCd = Math.max(0.5, 1.4 - this.cfg.world * 0.07)
+      boss.fireCd = Math.max(0.3, (1.4 - this.cfg.world * 0.07) * this.diff.enemyFireMul)
       const n = 5 + Math.floor(this.cfg.world / 2)
-      const sp = 170 + this.cfg.world * 9
+      const sp = (170 + this.cfg.world * 9) * this.diff.bulletSpeedMul
       for (let i = 0; i < n; i++) {
         const ang = Math.PI / 2 + (i - (n - 1) / 2) * 0.25
         this.ebullets.push({ x: boss.x, y: boss.y + boss.h / 2, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: 6 })
@@ -518,8 +525,9 @@ export class GameEngine {
     }
 
     boss.spawnCd -= dt
-    if (boss.spawnCd <= 0 && this.aliens.length < 3) {
-      boss.spawnCd = 4
+    const bossMinionCap = Math.max(2, Math.round(3 * this.diff.maxConcurrentMul))
+    if (boss.spawnCd <= 0 && this.aliens.length < bossMinionCap) {
+      boss.spawnCd = 4 * this.diff.spawnRateMul
       this.spawnAlien()
     }
   }
@@ -669,13 +677,13 @@ export class GameEngine {
         audio.bossDefeated()
         this.boss = null
         this.bossesDefeated++
-        this.score += 2000 + this.cfg.world * 500
+        this.score += Math.round((2000 + this.cfg.world * 500) * this.diff.scoreMul)
         this.endStage('bossDefeated')
       }
     } else {
       if (this.killedThisStage >= this.quota && this.aliens.length === 0 && this.spawned >= this.quota) {
         audio.levelUp()
-        this.score += 500 + this.cfg.world * 100
+        this.score += Math.round((500 + this.cfg.world * 100) * this.diff.scoreMul)
         this.endStage('levelComplete')
       }
     }

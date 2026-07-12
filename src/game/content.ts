@@ -1,7 +1,34 @@
 // Data-driven game content: worlds, bosses, blasters, gems.
 // Retro space theme with affectionate nods to Star Trek & Star Wars.
 
-import type { BlasterDef, GemDef, WorldDef } from './types'
+import type { BlasterDef, Difficulty, DifficultyMod, GemDef, WorldDef } from './types'
+
+// Normal mirrors the original balance (all multipliers = 1). Easy dials
+// everything down; Intense and Insane crank enemy count, speed, and fire rate.
+export const DIFFICULTIES: Record<Difficulty, DifficultyMod> = {
+  easy: {
+    key: 'easy', label: 'Easy', blurb: 'Fewer, slower aliens. Relaxed shots.', color: '#5eff8a',
+    quotaMul: 0.6, spawnRateMul: 1.5, maxConcurrentMul: 0.65,
+    enemySpeedMul: 0.7, enemyFireMul: 1.6, bulletSpeedMul: 0.8, scoreMul: 0.8,
+  },
+  normal: {
+    key: 'normal', label: 'Normal', blurb: 'The classic Cosmic Crusade balance.', color: '#5ef0ff',
+    quotaMul: 1, spawnRateMul: 1, maxConcurrentMul: 1,
+    enemySpeedMul: 1, enemyFireMul: 1, bulletSpeedMul: 1, scoreMul: 1,
+  },
+  intense: {
+    key: 'intense', label: 'Intense', blurb: 'More aliens, faster ships and shots.', color: '#ffb347',
+    quotaMul: 1.35, spawnRateMul: 0.72, maxConcurrentMul: 1.4,
+    enemySpeedMul: 1.28, enemyFireMul: 0.65, bulletSpeedMul: 1.22, scoreMul: 1.35,
+  },
+  insane: {
+    key: 'insane', label: 'Insane', blurb: 'A relentless swarm. Blistering fire.', color: '#ff5e5e',
+    quotaMul: 1.7, spawnRateMul: 0.52, maxConcurrentMul: 1.75,
+    enemySpeedMul: 1.55, enemyFireMul: 0.45, bulletSpeedMul: 1.45, scoreMul: 1.75,
+  },
+}
+
+export const DIFFICULTY_ORDER: Difficulty[] = ['easy', 'normal', 'intense', 'insane']
 
 export const BLASTERS: BlasterDef[] = [
   {

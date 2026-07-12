@@ -97,6 +97,26 @@
 }
 .controls-hint b { color: #ffd65e; }
 
+/* Difficulty selector */
+.difficulty-select { margin-top: 26px; }
+.difficulty-label { font-size: 12px; letter-spacing: 3px; color: #8ea3c8; }
+.difficulty-buttons {
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px;
+}
+.diff-btn {
+  --dc: #5ef0ff;
+  background: #10162e; color: #cfe0ff;
+  border: 2px solid #2b3a63; border-radius: 8px;
+  padding: 8px 16px; font-size: 13px; letter-spacing: 2px; cursor: pointer;
+  text-transform: uppercase; transition: all 0.12s ease;
+}
+.diff-btn:hover { border-color: var(--dc); color: #fff; }
+.diff-btn.active {
+  border-color: var(--dc); color: #05060a; background: var(--dc);
+  box-shadow: 0 0 16px var(--dc);
+}
+.difficulty-blurb { font-size: 12px; margin: 8px 0 0; min-height: 16px; }
+
 /* ---------- Buttons ---------- */
 .btn {
   background: #10162e;

@@ -26,6 +26,29 @@ export interface BlasterDef {
 
 export type AmmoType = 'rapid' | 'spread' | 'plasma' | 'homing'
 
+export type Difficulty = 'easy' | 'normal' | 'intense' | 'insane'
+
+export interface DifficultyMod {
+  key: Difficulty
+  label: string
+  blurb: string
+  color: string
+  /** How many aliens per level (scales the base quota). */
+  quotaMul: number
+  /** Spawn interval multiplier — <1 spawns faster. */
+  spawnRateMul: number
+  /** Max aliens on screen at once. */
+  maxConcurrentMul: number
+  /** Alien movement / descent speed. */
+  enemySpeedMul: number
+  /** Enemy fire cooldown multiplier — <1 shoots more often. */
+  enemyFireMul: number
+  /** Enemy projectile speed. */
+  bulletSpeedMul: number
+  /** Score bonus multiplier for level/boss completion. */
+  scoreMul: number
+}
+
 export interface GemDef {
   id: string
   name: string

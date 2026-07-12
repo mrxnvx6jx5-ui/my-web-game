@@ -4,9 +4,9 @@ import GameCanvas from './components/GameCanvas'
 import { GameEngine } from './game/engine'
 import { audio } from './game/audio'
 import {
-  BLASTERS, BOSSES_TO_ADVANCE, TOTAL_WORLDS, WORLDS, bossKey,
+  BLASTERS, BOSSES_TO_ADVANCE, DIFFICULTIES, DIFFICULTY_ORDER, TOTAL_WORLDS, WORLDS, bossKey,
 } from './game/content'
-import type { HudState, Progress, StageConfig, StageResult } from './game/types'
+import type { Difficulty, HudState, Progress, StageConfig, StageResult } from './game/types'
 import { loadProgress, saveProgress } from './lib/storage'
 import { fetchTop, submitScore, type ScoreRow } from './lib/leaderboard'
 
@@ -36,6 +36,16 @@ function loadTouchPref(): boolean {
   }
 }
 
+const DIFFICULTY_KEY = 'cosmic-crusade-difficulty'
+function loadDifficulty(): Difficulty {
+  try {
+    const saved = localStorage.getItem(DIFFICULTY_KEY) as Difficulty | null
+    return saved && saved in DIFFICULTIES ? saved : 'normal'
+  } catch {
+    return 'normal'
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('title')
   const [progress, setProgress] = useState<Progress>(() => loadProgress())
@@ -49,6 +59,7 @@ export default function App() {
   const [muted, setMuted] = useState(false)
   const [musicOn, setMusicOn] = useState(true)
   const [touchControls, setTouchControls] = useState<boolean>(loadTouchPref)
+  const [difficulty, setDifficulty] = useState<Difficulty>(loadDifficulty)
 
   const engineRef = useRef<GameEngine | null>(null)
 
@@ -56,14 +67,21 @@ export default function App() {
     engineRef.current = engine
     engine.setOwnedBlasters(progress.blasters)
     engine.setTouchControls(touchControls)
+    engine.setDifficulty(difficulty)
     engine.pause()
-  }, [progress.blasters, touchControls])
+  }, [progress.blasters, touchControls, difficulty])
 
   // Keep the engine + storage in sync when the touch-controls option changes.
   useEffect(() => {
     try { localStorage.setItem(TOUCH_KEY, touchControls ? '1' : '0') } catch { /* ignore */ }
     engineRef.current?.setTouchControls(touchControls)
   }, [touchControls])
+
+  // Persist + apply difficulty (takes effect from the next stage loaded).
+  useEffect(() => {
+    try { localStorage.setItem(DIFFICULTY_KEY, difficulty) } catch { /* ignore */ }
+    engineRef.current?.setDifficulty(difficulty)
+  }, [difficulty])
 
   const onHud = useCallback((h: HudState) => setHud(h), [])
 
@@ -172,7 +190,9 @@ export default function App() {
         <TitleScreen progress={progress} onStart={startRun}
           onLeaderboard={() => setScreen('leaderboard')}
           touchControls={touchControls}
-          onToggleTouch={() => { audio.uiClick(); setTouchControls((v) => !v) }} />
+          onToggleTouch={() => { audio.uiClick(); setTouchControls((v) => !v) }}
+          difficulty={difficulty}
+          onSetDifficulty={(d) => { audio.uiClick(); setDifficulty(d) }} />
       )}
 
       {screen === 'worldMap' && (
@@ -251,13 +271,16 @@ export default function App() {
 
 /* ------------------------------ Screens ------------------------------ */
 
-function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggleTouch }: {
+function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggleTouch, difficulty, onSetDifficulty }: {
   progress: Progress
   onStart: () => void
   onLeaderboard: () => void
   touchControls: boolean
   onToggleTouch: () => void
+  difficulty: Difficulty
+  onSetDifficulty: (d: Difficulty) => void
 }) {
+  const diff = DIFFICULTIES[difficulty]
   return (
     <div className="screen title-screen">
       <div className="stars-bg" />
@@ -267,6 +290,22 @@ function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggle
         <div className="menu-buttons">
           <button className="btn btn-primary" onClick={onStart}>▶ START GAME</button>
           <button className="btn" onClick={onLeaderboard}>🏆 LEADERBOARD</button>
+        </div>
+        <div className="difficulty-select">
+          <span className="difficulty-label">DIFFICULTY</span>
+          <div className="difficulty-buttons">
+            {DIFFICULTY_ORDER.map((d) => (
+              <button
+                key={d}
+                className={`diff-btn ${difficulty === d ? 'active' : ''}`}
+                style={{ '--dc': DIFFICULTIES[d].color } as CSSProperties}
+                onClick={() => onSetDifficulty(d)}
+              >
+                {DIFFICULTIES[d].label}
+              </button>
+            ))}
+          </div>
+          <p className="difficulty-blurb" style={{ color: diff.color }}>{diff.blurb}</p>
         </div>
         <div className="title-stats">
           <span>Best Score: <b>{progress.bestScore.toLocaleString()}</b></span>
