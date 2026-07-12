@@ -136,10 +136,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'Pirate-infested asteroid belt',
     bgTop: '#2a1206', bgBottom: '#0a0402', accent: '#ffb347',
     bosses: [
-      { name: 'Rok-Tammuz', title: 'Asteroid Devourer', color: '#c2a25e', hp: 60, weapon: 'aimed' },
-      { name: 'ISV Marauder', title: 'Pirate Dreadnought', color: '#d89b57', hp: 80, weapon: 'spread' },
-      { name: 'Grxil Broodmother', title: 'Belt Horror', color: '#8a6b3a', hp: 100, weapon: 'mines' },
-      { name: 'Overseer KR-528', title: 'Mining Tyrant', color: '#e0b070', hp: 120, weapon: 'shotgun' },
+      { name: 'Rok-Tammuz', title: 'Asteroid Devourer', color: '#c2a25e', hp: 60, weapon: 'aimed', kind: 'monster' },
+      { name: 'ISV Marauder', title: 'Pirate Dreadnought', color: '#d89b57', hp: 80, weapon: 'spread', kind: 'warship' },
+      { name: 'Grxil Broodmother', title: 'Belt Horror', color: '#8a6b3a', hp: 100, weapon: 'mines', kind: 'alien' },
+      { name: 'Overseer KR-528', title: 'Mining Tyrant', color: '#e0b070', hp: 120, weapon: 'shotgun', kind: 'saucer' },
     ],
   },
   {
@@ -147,10 +147,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'A storm of ionized gas',
     bgTop: '#2a0812', bgBottom: '#0a0206', accent: '#ff5e7a',
     bosses: [
-      { name: 'Pyre Wraith', title: 'Living Flame', color: '#a83a52', hp: 90, weapon: 'spiral' },
-      { name: 'Scarlet Leviathan', title: 'Nebula Titan', color: '#c74a63', hp: 110, weapon: 'aimed' },
-      { name: 'Ember Corsair', title: 'Raider Flagship', color: '#e05a75', hp: 130, weapon: 'ring' },
-      { name: 'The Combustor', title: 'Ignition Core', color: '#ff6a85', hp: 150, weapon: 'mines' },
+      { name: 'Pyre Wraith', title: 'Living Flame', color: '#a83a52', hp: 90, weapon: 'spiral', kind: 'alien' },
+      { name: 'Scarlet Leviathan', title: 'Nebula Titan', color: '#c74a63', hp: 110, weapon: 'aimed', kind: 'monster' },
+      { name: 'Ember Corsair', title: 'Raider Flagship', color: '#e05a75', hp: 130, weapon: 'ring', kind: 'warship' },
+      { name: 'The Combustor', title: 'Ignition Core', color: '#ff6a85', hp: 150, weapon: 'mines', kind: 'saucer' },
     ],
   },
   {
@@ -158,10 +158,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'Ice shards around a dead star',
     bgTop: '#0a1a2a', bgBottom: '#02060a', accent: '#7ec8ff',
     bosses: [
-      { name: 'Cryos', title: 'Frozen Warden', color: '#8fb8d8', hp: 120, weapon: 'spread' },
-      { name: 'Hoarfrost Queen', title: 'Ice Sovereign', color: '#aecde0', hp: 140, weapon: 'sweep' },
-      { name: 'ISV Glacier', title: 'Frostbreaker Cruiser', color: '#6fa8d0', hp: 160, weapon: 'homing' },
-      { name: 'Rime Colossus', title: 'Shard Golem', color: '#c0dcf0', hp: 180, weapon: 'mines' },
+      { name: 'Cryos', title: 'Frozen Warden', color: '#8fb8d8', hp: 120, weapon: 'spread', kind: 'monster' },
+      { name: 'Hoarfrost Queen', title: 'Ice Sovereign', color: '#aecde0', hp: 140, weapon: 'sweep', kind: 'alien' },
+      { name: 'ISV Glacier', title: 'Frostbreaker Cruiser', color: '#6fa8d0', hp: 160, weapon: 'homing', kind: 'warship' },
+      { name: 'Rime Colossus', title: 'Shard Golem', color: '#c0dcf0', hp: 180, weapon: 'mines', kind: 'monster' },
     ],
   },
   {
@@ -169,10 +169,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'Where light goes to die',
     bgTop: '#12082a', bgBottom: '#04020a', accent: '#8a5eff',
     bosses: [
-      { name: 'Null Serpent', title: 'Void Devourer', color: '#6a4ac7', hp: 150, weapon: 'mines' },
-      { name: 'Umbra Legion', title: 'Shadow Fleet', color: '#7a5ad7', hp: 170, weapon: 'spiral' },
-      { name: 'The Silent One', title: 'Void Wraith', color: '#8a6ae7', hp: 190, weapon: 'aimed' },
-      { name: 'Entropy Engine', title: 'Collapse Core', color: '#9a7aff', hp: 220, weapon: 'ring' },
+      { name: 'Null Serpent', title: 'Void Devourer', color: '#6a4ac7', hp: 150, weapon: 'mines', kind: 'monster' },
+      { name: 'Umbra Legion', title: 'Shadow Fleet', color: '#7a5ad7', hp: 170, weapon: 'spiral', kind: 'warship' },
+      { name: 'The Silent One', title: 'Void Wraith', color: '#8a6ae7', hp: 190, weapon: 'aimed', kind: 'alien' },
+      { name: 'Entropy Engine', title: 'Collapse Core', color: '#9a7aff', hp: 220, weapon: 'ring', kind: 'saucer' },
     ],
   },
   {
@@ -180,10 +180,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'Overgrown jungle worlds',
     bgTop: '#1a2a08', bgBottom: '#060a02', accent: '#b6ff5e',
     bosses: [
-      { name: 'Sporex', title: 'Fungal Behemoth', color: '#9ac74a', hp: 180, weapon: 'shotgun' },
-      { name: 'Vine Matriarch', title: 'Jungle Horror', color: '#aad75a', hp: 200, weapon: 'homing' },
-      { name: 'Canopy Stalker', title: 'Apex Predator', color: '#bae76a', hp: 220, weapon: 'spread' },
-      { name: 'Warlord Zathrix', title: 'Beast Master', color: '#caff7a', hp: 250, weapon: 'mines' },
+      { name: 'Sporex', title: 'Fungal Behemoth', color: '#9ac74a', hp: 180, weapon: 'shotgun', kind: 'monster' },
+      { name: 'Vine Matriarch', title: 'Jungle Horror', color: '#aad75a', hp: 200, weapon: 'homing', kind: 'alien' },
+      { name: 'Canopy Stalker', title: 'Apex Predator', color: '#bae76a', hp: 220, weapon: 'spread', kind: 'monster' },
+      { name: 'Warlord Zathrix', title: 'Beast Master', color: '#caff7a', hp: 250, weapon: 'mines', kind: 'alien' },
     ],
   },
   {
@@ -191,10 +191,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'In the corona of a blue star',
     bgTop: '#2a0a06', bgBottom: '#0a0302', accent: '#ff7b3d',
     bosses: [
-      { name: 'Solaris Prime', title: 'Star-Forged Titan', color: '#e07a30', hp: 210, weapon: 'ring' },
-      { name: 'Magma Wyrm', title: 'Corona Serpent', color: '#f08a40', hp: 230, weapon: 'sweep' },
-      { name: 'ISV Helios', title: 'Sunspear Cruiser', color: '#ff9a50', hp: 260, weapon: 'mines' },
-      { name: 'The Furnace', title: 'Plasma Heart', color: '#ffb060', hp: 300, weapon: 'spiral' },
+      { name: 'Solaris Prime', title: 'Star-Forged Titan', color: '#e07a30', hp: 210, weapon: 'ring', kind: 'monster' },
+      { name: 'Magma Wyrm', title: 'Corona Serpent', color: '#f08a40', hp: 230, weapon: 'sweep', kind: 'monster' },
+      { name: 'ISV Helios', title: 'Sunspear Cruiser', color: '#ff9a50', hp: 260, weapon: 'mines', kind: 'warship' },
+      { name: 'The Furnace', title: 'Plasma Heart', color: '#ffb060', hp: 300, weapon: 'spiral', kind: 'saucer' },
     ],
   },
   {
@@ -202,10 +202,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'A graveyard of derelict fleets',
     bgTop: '#0a2216', bgBottom: '#020805', accent: '#5edb9a',
     bosses: [
-      { name: 'Revenant Hull', title: 'Ghost Ship', color: '#4acb8a', hp: 240, weapon: 'aimed' },
-      { name: 'Admiral Mordis', title: 'The Hollow Captain', color: '#5adb9a', hp: 260, weapon: 'mines' },
-      { name: 'Drift Wraith', title: 'Hull-Bound Terror', color: '#6aebaa', hp: 290, weapon: 'shotgun' },
-      { name: 'Flagship Oblivion', title: 'Dead Fleet Core', color: '#7afbba', hp: 330, weapon: 'homing' },
+      { name: 'Revenant Hull', title: 'Ghost Ship', color: '#4acb8a', hp: 240, weapon: 'aimed', kind: 'warship' },
+      { name: 'Admiral Mordis', title: 'The Hollow Captain', color: '#5adb9a', hp: 260, weapon: 'mines', kind: 'alien' },
+      { name: 'Drift Wraith', title: 'Hull-Bound Terror', color: '#6aebaa', hp: 290, weapon: 'shotgun', kind: 'alien' },
+      { name: 'Flagship Oblivion', title: 'Dead Fleet Core', color: '#7afbba', hp: 330, weapon: 'homing', kind: 'warship' },
     ],
   },
   {
@@ -213,10 +213,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'A living, chittering hive',
     bgTop: '#0a0a2a', bgBottom: '#02020a', accent: '#5e8dff',
     bosses: [
-      { name: 'Hive Tyrant', title: 'Swarm Overlord', color: '#4a5ac7', hp: 270, weapon: 'spiral' },
-      { name: 'Broodmother Xel', title: 'Egg Sovereign', color: '#5a6ad7', hp: 300, weapon: 'ring' },
-      { name: 'The Devourer', title: 'Living Hive', color: '#6a7ae7', hp: 340, weapon: 'sweep' },
-      { name: 'Nexus Mind', title: 'Hive Intelligence', color: '#7a8aff', hp: 380, weapon: 'mines' },
+      { name: 'Hive Tyrant', title: 'Swarm Overlord', color: '#4a5ac7', hp: 270, weapon: 'spiral', kind: 'monster' },
+      { name: 'Broodmother Xel', title: 'Egg Sovereign', color: '#5a6ad7', hp: 300, weapon: 'ring', kind: 'alien' },
+      { name: 'The Devourer', title: 'Living Hive', color: '#6a7ae7', hp: 340, weapon: 'sweep', kind: 'monster' },
+      { name: 'Nexus Mind', title: 'Hive Intelligence', color: '#7a8aff', hp: 380, weapon: 'mines', kind: 'saucer' },
     ],
   },
   {
@@ -224,10 +224,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'The edge of a black hole',
     bgTop: '#1a0a0a', bgBottom: '#050202', accent: '#ff5e5e',
     bosses: [
-      { name: 'Gravik', title: 'Gravity Fiend', color: '#c74a4a', hp: 320, weapon: 'mines' },
-      { name: 'ISV Eventide', title: 'Horizon Breaker', color: '#d75a5a', hp: 360, weapon: 'aimed' },
-      { name: 'The Collapsar', title: 'Singularity Beast', color: '#e76a6a', hp: 400, weapon: 'spiral' },
-      { name: 'Warden of the Abyss', title: 'Horizon Keeper', color: '#ff5e5e', hp: 460, weapon: 'ring' },
+      { name: 'Gravik', title: 'Gravity Fiend', color: '#c74a4a', hp: 320, weapon: 'mines', kind: 'monster' },
+      { name: 'ISV Eventide', title: 'Horizon Breaker', color: '#d75a5a', hp: 360, weapon: 'aimed', kind: 'warship' },
+      { name: 'The Collapsar', title: 'Singularity Beast', color: '#e76a6a', hp: 400, weapon: 'spiral', kind: 'monster' },
+      { name: 'Warden of the Abyss', title: 'Horizon Keeper', color: '#ff5e5e', hp: 460, weapon: 'ring', kind: 'alien' },
     ],
   },
   {
@@ -235,10 +235,10 @@ export const WORLDS: WorldDef[] = [
     subtitle: 'The heart of the galaxy',
     bgTop: '#2a1a00', bgBottom: '#0a0600', accent: '#ffd65e',
     bosses: [
-      { name: 'Coreborn', title: 'Ancient Guardian', color: '#e0b040', hp: 380, weapon: 'sweep' },
-      { name: 'The Annihilator', title: 'Planet-Ender', color: '#f0c050', hp: 440, weapon: 'shotgun' },
-      { name: 'Omega Serpent', title: 'Galaxy Eater', color: '#ffd060', hp: 520, weapon: 'homing' },
-      { name: 'Sovereign Prime', title: 'Heart of the Galaxy', color: '#ffe070', hp: 640, weapon: 'mines' },
+      { name: 'Coreborn', title: 'Ancient Guardian', color: '#e0b040', hp: 380, weapon: 'sweep', kind: 'saucer' },
+      { name: 'The Annihilator', title: 'Planet-Ender', color: '#f0c050', hp: 440, weapon: 'shotgun', kind: 'warship' },
+      { name: 'Omega Serpent', title: 'Galaxy Eater', color: '#ffd060', hp: 520, weapon: 'homing', kind: 'monster' },
+      { name: 'Sovereign Prime', title: 'Heart of the Galaxy', color: '#ffe070', hp: 640, weapon: 'mines', kind: 'saucer' },
     ],
   },
 ]

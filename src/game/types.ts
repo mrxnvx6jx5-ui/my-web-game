@@ -63,6 +63,9 @@ export interface GemDef {
 export type BossWeapon =
   | 'spread' | 'aimed' | 'spiral' | 'ring' | 'shotgun' | 'homing' | 'sweep' | 'mines'
 
+/** Visual archetype for the boss sprite. */
+export type BossKind = 'saucer' | 'warship' | 'monster' | 'alien'
+
 export interface BossDef {
   name: string
   title: string
@@ -70,6 +73,8 @@ export interface BossDef {
   hp: number
   /** The boss's signature attack — each boss in a world uses a different one. */
   weapon: BossWeapon
+  /** What the boss looks like: flying saucer, winged warship, monster, or alien. */
+  kind: BossKind
 }
 
 export interface WorldDef {

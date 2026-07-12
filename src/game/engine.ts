@@ -5,7 +5,7 @@
 import { audio } from './audio'
 import { BLASTERS, DIFFICULTIES, GEMS, GEM_DROP_POOL, WORLDS } from './content'
 import type {
-  AmmoType, BlasterDef, BossWeapon, Difficulty, DifficultyMod, HudState, RunStats, StageConfig, StageResult,
+  AmmoType, BlasterDef, BossKind, BossWeapon, Difficulty, DifficultyMod, HudState, RunStats, StageConfig, StageResult,
 } from './types'
 
 export const W = 900
@@ -26,7 +26,7 @@ interface Boss {
   id: number; x: number; y: number; w: number; h: number
   hp: number; maxHp: number; t: number; fireCd: number
   dir: number; name: string; title: string; color: string; spawnCd: number
-  flash: number; weapon: BossWeapon; ang: number
+  flash: number; weapon: BossWeapon; ang: number; kind: BossKind
 }
 interface Mine {
   id: number; x: number; y: number; vx: number; vy: number
@@ -386,8 +386,12 @@ export class GameEngine {
       id: this.idc++, x: W / 2, y: 110, w: 140, h: 90,
       hp, maxHp: hp, t: 0, fireCd: 1.2, dir: 1,
       name: bdef.name, title: bdef.title, color: bdef.color,
-      spawnCd: 3, flash: 0, weapon: bdef.weapon, ang: 0,
+      spawnCd: 3, flash: 0, weapon: bdef.weapon, ang: 0, kind: bdef.kind,
     }
+    // give organic/saucer bosses a rounder footprint than warships
+    if (bdef.kind === 'monster' || bdef.kind === 'alien') { this.boss.w = 150; this.boss.h = 130 }
+    else if (bdef.kind === 'saucer') { this.boss.w = 180; this.boss.h = 90 }
+    else { this.boss.w = 170; this.boss.h = 100 }
   }
 
   private spawnMine(x: number, y: number) {
@@ -1373,29 +1377,205 @@ export class GameEngine {
     ctx.translate(b.x, b.y)
     ctx.shadowBlur = 24
     ctx.shadowColor = b.color
-    ctx.fillStyle = b.flash > 0 ? '#ffffff' : b.color
-    // hull
-    ctx.beginPath()
-    ctx.moveTo(-b.w / 2, 0)
-    ctx.lineTo(-b.w / 3, -b.h / 2)
-    ctx.lineTo(b.w / 3, -b.h / 2)
-    ctx.lineTo(b.w / 2, 0)
-    ctx.lineTo(b.w / 3, b.h / 2)
-    ctx.lineTo(-b.w / 3, b.h / 2)
-    ctx.closePath()
-    ctx.fill()
-    // core
-    ctx.shadowBlur = 30
-    ctx.shadowColor = '#ffffff'
-    ctx.fillStyle = '#1a0a0a'
-    ctx.beginPath()
-    ctx.arc(0, 0, b.h / 4, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = b.flash > 0 ? '#ffffff' : '#ff5e5e'
-    ctx.beginPath()
-    ctx.arc(0, 0, b.h / 7 + Math.sin(b.t * 6) * 2, 0, Math.PI * 2)
-    ctx.fill()
+    const body = b.flash > 0 ? '#ffffff' : b.color
+    switch (b.kind) {
+      case 'saucer': this.drawBossSaucer(b, body); break
+      case 'warship': this.drawBossWarship(b, body); break
+      case 'monster': this.drawBossMonster(b, body); break
+      case 'alien': this.drawBossAlien(b, body); break
+    }
     ctx.restore()
+  }
+
+  private lighten(hex: string, amt: number): string {
+    const n = parseInt(hex.slice(1), 16)
+    const r = Math.min(255, ((n >> 16) & 255) + amt)
+    const g = Math.min(255, ((n >> 8) & 255) + amt)
+    const bl = Math.min(255, (n & 255) + amt)
+    return `rgb(${r},${g},${bl})`
+  }
+
+  // Big flying saucer: domed cockpit, wide metallic disc, ring of blinking lights.
+  private drawBossSaucer(b: Boss, body: string) {
+    const ctx = this.ctx
+    const w = b.w / 2, h = b.h / 2
+    // underside glow
+    ctx.shadowBlur = 30
+    ctx.shadowColor = body
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'
+    ctx.beginPath(); ctx.ellipse(0, h * 0.7, w * 0.6, h * 0.5, 0, 0, Math.PI * 2); ctx.fill()
+    // disc
+    const g = ctx.createLinearGradient(0, -h, 0, h)
+    g.addColorStop(0, this.lighten(body === '#ffffff' ? '#888888' : body, 40))
+    g.addColorStop(1, '#3a3f4a')
+    ctx.fillStyle = g
+    ctx.shadowBlur = 20
+    ctx.beginPath(); ctx.ellipse(0, 0, w, h * 0.55, 0, 0, Math.PI * 2); ctx.fill()
+    // dome
+    ctx.fillStyle = body
+    ctx.globalAlpha = 0.85
+    ctx.beginPath(); ctx.ellipse(0, -h * 0.15, w * 0.42, h * 0.7, 0, Math.PI, 0); ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'
+    ctx.beginPath(); ctx.ellipse(-w * 0.12, -h * 0.4, w * 0.12, h * 0.22, 0, 0, Math.PI * 2); ctx.fill()
+    // ring of lights
+    ctx.shadowBlur = 8
+    for (let i = 0; i < 9; i++) {
+      const on = (Math.sin(b.t * 5 + i) + 1) / 2 > 0.4
+      ctx.fillStyle = on ? '#ffe45e' : '#5a4a20'
+      ctx.shadowColor = '#ffe45e'
+      const lx = -w * 0.85 + (i / 8) * w * 1.7
+      ctx.beginPath(); ctx.arc(lx, h * 0.18, 4, 0, Math.PI * 2); ctx.fill()
+    }
+  }
+
+  // Big winged warship: angular hull, swept wings, engine burn, bridge & weapon pods.
+  private drawBossWarship(b: Boss, body: string) {
+    const ctx = this.ctx
+    const w = b.w / 2, h = b.h / 2
+    // engine burn (top — faces away from the player)
+    ctx.fillStyle = '#5ecbff'
+    ctx.globalAlpha = 0.8
+    for (const ex of [-w * 0.35, w * 0.35]) {
+      ctx.beginPath()
+      ctx.moveTo(ex - 7, -h * 0.7)
+      ctx.lineTo(ex, -h * (1.1 + Math.random() * 0.25))
+      ctx.lineTo(ex + 7, -h * 0.7)
+      ctx.closePath(); ctx.fill()
+    }
+    ctx.globalAlpha = 1
+    ctx.shadowBlur = 16
+    ctx.shadowColor = body
+    // wings
+    const g = ctx.createLinearGradient(0, -h, 0, h)
+    g.addColorStop(0, this.lighten(body === '#ffffff' ? '#888' : body, 30))
+    g.addColorStop(1, '#3a3f4a')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(0, h)                 // nose (points at player)
+    ctx.lineTo(w, -h * 0.1)          // right wingtip
+    ctx.lineTo(w * 0.55, -h * 0.6)
+    ctx.lineTo(w * 0.25, -h * 0.7)
+    ctx.lineTo(-w * 0.25, -h * 0.7)
+    ctx.lineTo(-w * 0.55, -h * 0.6)
+    ctx.lineTo(-w, -h * 0.1)         // left wingtip
+    ctx.closePath(); ctx.fill()
+    // central spine
+    ctx.fillStyle = '#2a2f38'
+    ctx.beginPath()
+    ctx.moveTo(0, h); ctx.lineTo(w * 0.18, -h * 0.6); ctx.lineTo(-w * 0.18, -h * 0.6)
+    ctx.closePath(); ctx.fill()
+    // bridge glow + wingtip guns
+    ctx.shadowBlur = 8
+    ctx.shadowColor = body
+    ctx.fillStyle = body
+    ctx.beginPath(); ctx.ellipse(0, -h * 0.1, w * 0.1, h * 0.22, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#ff8a5e'
+    ctx.beginPath(); ctx.arc(w * 0.92, -h * 0.1, 4, 0, Math.PI * 2)
+    ctx.arc(-w * 0.92, -h * 0.1, 4, 0, Math.PI * 2); ctx.fill()
+  }
+
+  // Hulking space monster: armored carapace, horns, many eyes, gnashing fanged maw.
+  private drawBossMonster(b: Boss, body: string) {
+    const ctx = this.ctx
+    const w = b.w / 2, h = b.h / 2
+    ctx.shadowBlur = 18
+    ctx.shadowColor = body
+    // horns
+    ctx.fillStyle = '#e8e0d0'
+    for (const hx of [-1, 1]) {
+      ctx.beginPath()
+      ctx.moveTo(hx * w * 0.55, -h * 0.4)
+      ctx.lineTo(hx * w * 0.95, -h * 1.05)
+      ctx.lineTo(hx * w * 0.4, -h * 0.7)
+      ctx.closePath(); ctx.fill()
+    }
+    // lumpy carapace
+    const g = ctx.createRadialGradient(0, -h * 0.2, 4, 0, 0, w)
+    g.addColorStop(0, this.lighten(body === '#ffffff' ? '#aaa' : body, 30))
+    g.addColorStop(1, body === '#ffffff' ? '#888' : body)
+    ctx.fillStyle = g
+    ctx.beginPath()
+    const lobes = 11
+    for (let i = 0; i <= lobes; i++) {
+      const ang = Math.PI + (i / lobes) * Math.PI // top half
+      const rr = w * (0.9 + Math.sin(i * 1.7) * 0.12)
+      const px = Math.cos(ang) * rr, py = Math.sin(ang) * rr * (h / w) - h * 0.05
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+    }
+    ctx.lineTo(w, h * 0.3); ctx.lineTo(-w, h * 0.3)
+    ctx.closePath(); ctx.fill()
+    // eyes
+    ctx.shadowBlur = 10; ctx.shadowColor = '#ffe45e'
+    ctx.fillStyle = '#ffe45e'
+    for (const ex of [-0.45, -0.15, 0.15, 0.45]) {
+      ctx.beginPath(); ctx.arc(ex * w, -h * 0.15, 6, 0, Math.PI * 2); ctx.fill()
+    }
+    ctx.fillStyle = '#1a0a05'
+    for (const ex of [-0.45, -0.15, 0.15, 0.45]) {
+      ctx.beginPath(); ctx.arc(ex * w, -h * 0.15, 2.5, 0, Math.PI * 2); ctx.fill()
+    }
+    // gnashing maw
+    ctx.shadowBlur = 0
+    ctx.fillStyle = '#2a0805'
+    const gape = h * 0.34 + Math.sin(b.t * 5) * 6
+    ctx.beginPath(); ctx.ellipse(0, h * 0.35, w * 0.62, gape, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath()
+      ctx.moveTo(i * w * 0.16, h * 0.35 - gape + 2)
+      ctx.lineTo(i * w * 0.16 + 6, h * 0.35 - gape * 0.3)
+      ctx.lineTo(i * w * 0.16 - 6, h * 0.35 - gape * 0.3)
+      ctx.closePath(); ctx.fill()
+      ctx.beginPath()
+      ctx.moveTo(i * w * 0.16, h * 0.35 + gape - 2)
+      ctx.lineTo(i * w * 0.16 + 6, h * 0.35 + gape * 0.3)
+      ctx.lineTo(i * w * 0.16 - 6, h * 0.35 + gape * 0.3)
+      ctx.closePath(); ctx.fill()
+    }
+  }
+
+  // Giant alien: bulbous translucent head, huge central eye, mass of tentacles.
+  private drawBossAlien(b: Boss, body: string) {
+    const ctx = this.ctx
+    const w = b.w / 2, h = b.h / 2
+    ctx.shadowBlur = 16
+    ctx.shadowColor = body
+    // tentacles
+    ctx.strokeStyle = body
+    ctx.lineWidth = 6
+    ctx.lineCap = 'round'
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath()
+      ctx.moveTo(i * w * 0.22, h * 0.3)
+      ctx.quadraticCurveTo(
+        i * w * 0.3 + Math.sin(b.t * 3 + i) * 10, h * 1.0,
+        i * w * 0.22 + Math.sin(b.t * 2 + i) * 8, h * 1.4,
+      )
+      ctx.stroke()
+    }
+    // head
+    const g = ctx.createRadialGradient(0, -h * 0.25, 4, 0, 0, w)
+    g.addColorStop(0, this.lighten(body === '#ffffff' ? '#ccc' : body, 55))
+    g.addColorStop(1, body === '#ffffff' ? '#999' : body)
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.ellipse(0, 0, w * 0.85, h, 0, 0, Math.PI * 2); ctx.fill()
+    // brain ridges
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+    ctx.lineWidth = 2
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath(); ctx.ellipse(i * w * 0.18, -h * 0.35, w * 0.12, h * 0.3, 0, 0, Math.PI); ctx.stroke()
+    }
+    // big eye
+    ctx.shadowBlur = 0
+    ctx.fillStyle = '#fff'
+    ctx.beginPath(); ctx.arc(0, h * 0.05, w * 0.42, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = body
+    ctx.beginPath(); ctx.arc(0, h * 0.05, w * 0.28, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#0a0512'
+    ctx.beginPath(); ctx.arc(Math.sin(b.t * 1.5) * w * 0.1, h * 0.05, w * 0.13, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    ctx.beginPath(); ctx.arc(-w * 0.06, h * 0.05 - w * 0.06, w * 0.05, 0, Math.PI * 2); ctx.fill()
   }
 
   private drawGem(g: Gem) {
