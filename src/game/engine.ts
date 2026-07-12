@@ -16,7 +16,7 @@ interface Bullet {
   dmg: number; color: string; pierce: boolean; homing: boolean
   hits: Set<number>
 }
-interface EBullet { x: number; y: number; vx: number; vy: number; r: number; homing?: boolean }
+interface EBullet { x: number; y: number; vx: number; vy: number; r: number; homing?: boolean; dead?: boolean }
 interface Alien {
   id: number; x: number; y: number; w: number; h: number
   hp: number; maxHp: number; type: number; points: number
@@ -812,6 +812,22 @@ export class GameEngine {
       }
     }
     // (explosions happen in the update loop when hp hits 0)
+
+    // player lasers shoot down incoming enemy fire
+    for (const b of this.bullets) {
+      if (b.y < -900) continue
+      for (const e of this.ebullets) {
+        if (e.dead) continue
+        if (Math.hypot(b.x - e.x, b.y - e.y) < e.r + b.r + 1) {
+          e.dead = true
+          this.score += 5
+          this.spawnParticles(e.x, e.y, '#ffd65e', 5)
+          if (!b.pierce) { b.y = -999; break }
+        }
+      }
+    }
+    this.ebullets = this.ebullets.filter((e) => !e.dead)
+
     this.bullets = this.bullets.filter((b) => b.y > -900)
 
     // boss death handled in checkStageEnd
@@ -839,12 +855,12 @@ export class GameEngine {
           break
         }
       }
-      // asteroid vs player (destroys the asteroid on impact)
+      // asteroid vs player (destroys the asteroid and shatters the shield)
       for (const a of this.asteroids) {
         if (Math.hypot(a.x - this.px, a.y - this.py) < a.r + 14) {
           this.spawnParticles(a.x, a.y, '#a89880', Math.round(a.r))
           a.hp = 0
-          this.hurtPlayer()
+          this.hurtPlayer(true)
           break
         }
       }
@@ -865,14 +881,15 @@ export class GameEngine {
     this.gems = this.gems.filter((g) => g.y < H + 100)
   }
 
-  private hurtPlayer() {
+  private hurtPlayer(wipeShield = false) {
     // Shields soak up hits first; only when depleted do you lose a life.
+    // An asteroid impact (wipeShield) shatters the whole shield at once.
     if (this.shield > 0) {
-      this.shield = Math.max(0, this.shield - SHIELD_HIT_COST)
-      this.invuln = 0.8
+      this.shield = wipeShield ? 0 : Math.max(0, this.shield - SHIELD_HIT_COST)
+      this.invuln = wipeShield ? 1.4 : 0.8
       audio.bossHit()
-      this.spawnParticles(this.px, this.py, '#5ef0ff', 12)
-      this.addFloat(this.px, this.py - 26, 'SHIELD', '#5ef0ff')
+      this.spawnParticles(this.px, this.py, '#5ef0ff', wipeShield ? 24 : 12)
+      this.addFloat(this.px, this.py - 26, wipeShield ? 'SHIELDS DOWN!' : 'SHIELD', '#5ef0ff')
       return
     }
     this.lives--
