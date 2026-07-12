@@ -164,6 +164,7 @@ export const GEMS: Record<string, GemDef> = {
   spread: { id: 'spread', name: 'Spread Cell', color: '#5ef0ff', points: 30, ammo: 'spread' },
   plasma: { id: 'plasma', name: 'Plasma Cell', color: '#ff5ea8', points: 30, ammo: 'plasma' },
   homing: { id: 'homing', name: 'Homing Cell', color: '#ffe45e', points: 30, ammo: 'homing' },
+  shield: { id: 'shield', name: 'Shield Cell', color: '#5ef0ff', points: 20 },
   life: { id: 'life', name: 'Med-Kit', color: '#ff5e5e', points: 0, life: true },
 }
 

@@ -30,7 +30,11 @@ interface Boss {
 }
 interface Gem {
   id: string; x: number; y: number; vx: number; vy: number; r: number; t: number
-  color: string; points: number; ammo?: AmmoType; life?: boolean
+  color: string; points: number; ammo?: AmmoType; life?: boolean; shield?: boolean
+}
+interface Asteroid {
+  id: number; x: number; y: number; vx: number; vy: number; r: number
+  hp: number; maxHp: number; rot: number; spin: number; shape: number[]
 }
 interface Particle {
   x: number; y: number; vx: number; vy: number; life: number; maxLife: number
@@ -47,6 +51,19 @@ interface Callbacks {
 const AMMO_START: Record<AmmoType, number> = {
   rapid: 70, spread: 45, plasma: 25, homing: 35,
 }
+
+// The top HUD strip acts as a buffer where enemies enter; this mirrors it at
+// the bottom — enemies never descend past ENEMY_FLOOR, keeping the player's
+// home row (the bottom buffer band) clear.
+const BOTTOM_BUFFER = 96
+const ENEMY_FLOOR = H - BOTTOM_BUFFER
+
+// Shields absorb hits before lives are lost; full at the start of every level.
+const MAX_SHIELD = 100
+const SHIELD_HIT_COST = 34
+const SHIELD_GEM_RESTORE = 50
+// Asteroids start appearing from this world index (0-based) onward.
+const ASTEROID_FROM_WORLD = 2
 
 export class GameEngine {
   private ctx: CanvasRenderingContext2D
@@ -80,6 +97,7 @@ export class GameEngine {
   private bullets: Bullet[] = []
   private ebullets: EBullet[] = []
   private gems: Gem[] = []
+  private asteroids: Asteroid[] = []
   private particles: Particle[] = []
   private floats: FloatText[] = []
   private stars: Star[] = []
@@ -89,6 +107,7 @@ export class GameEngine {
   private spawned = 0
   private killedThisStage = 0
   private spawnTimer = 0
+  private asteroidTimer = 0
   private stageStartMs = 0
   private fireCd = 0
   private stageBanner = 0
@@ -102,6 +121,7 @@ export class GameEngine {
   private pvx = 0
   private pvy = 0
   private invuln = 0
+  private shield = MAX_SHIELD
   private keys: Record<string, boolean> = {}
 
   // Touch controls (drag to move, auto-fire while touching)
@@ -154,12 +174,14 @@ export class GameEngine {
     this.bullets = []
     this.ebullets = []
     this.gems = []
+    this.asteroids = []
     this.particles = []
     this.floats = []
     this.boss = null
     this.spawned = 0
     this.killedThisStage = 0
     this.spawnTimer = 0
+    this.asteroidTimer = 2 + Math.random() * 2
     this.fireCd = 0
     this.awaiting = false
     this.paused = false
@@ -168,6 +190,7 @@ export class GameEngine {
     this.pvx = 0
     this.pvy = 0
     this.invuln = 1.2
+    this.shield = MAX_SHIELD // full shields at the start of every level
     this.stageStartMs = performance.now()
     this.stageBanner = 2.2
 
@@ -328,6 +351,28 @@ export class GameEngine {
     this.spawned++
   }
 
+  /** Asteroids appear in tougher sectors (and always on Intense/Insane). */
+  private asteroidsActive(): boolean {
+    return this.cfg.world >= ASTEROID_FROM_WORLD || this.diff.enemySpeedMul > 1.2
+  }
+
+  private spawnAsteroid() {
+    const big = Math.random() < 0.4
+    const r = big ? 26 + Math.random() * 14 : 14 + Math.random() * 10
+    // Irregular rock silhouette: per-vertex radius jitter.
+    const verts = 8 + Math.floor(Math.random() * 4)
+    const shape: number[] = []
+    for (let i = 0; i < verts; i++) shape.push(0.72 + Math.random() * 0.5)
+    this.asteroids.push({
+      id: this.idc++,
+      x: 30 + Math.random() * (W - 60), y: -r - 10,
+      vx: (Math.random() - 0.5) * 70,
+      vy: (60 + this.cfg.world * 6 + Math.random() * 50) * this.diff.enemySpeedMul,
+      r, hp: Math.ceil(r / 8), maxHp: Math.ceil(r / 8),
+      rot: Math.random() * Math.PI, spin: (Math.random() - 0.5) * 2, shape,
+    })
+  }
+
   private spawnBoss() {
     const bdef = WORLDS[this.cfg.world].bosses[this.cfg.boss]
     const hp = bdef.hp
@@ -457,7 +502,7 @@ export class GameEngine {
       a.baseX += a.vx * dt
       if (a.baseX < 40 || a.baseX > W - 40) a.vx *= -1
       a.y += a.vy * dt * 0.6
-      if (a.y > H - 90) a.y = H - 90
+      if (a.y > ENEMY_FLOOR) a.y = ENEMY_FLOOR // stay out of the bottom buffer
       a.fireCd -= dt
       if (a.fireCd <= 0 && a.y > 0) {
         a.fireCd = (1.5 + Math.random() * 2.5) * this.diff.enemyFireMul
@@ -471,6 +516,23 @@ export class GameEngine {
 
     // Boss
     if (this.boss) this.updateBoss(dt)
+
+    // Asteroids (hazards to shoot or dodge; they pass through the bottom buffer)
+    if (this.asteroidsActive()) {
+      this.asteroidTimer -= dt
+      if (this.asteroidTimer <= 0 && this.asteroids.length < 6) {
+        this.spawnAsteroid()
+        const base = this.cfg.level === 0 ? 2.6 : 3.4 - this.cfg.world * 0.12
+        this.asteroidTimer = Math.max(0.8, base * this.diff.spawnRateMul) + Math.random() * 1.2
+      }
+    }
+    for (const a of this.asteroids) {
+      a.x += a.vx * dt
+      a.y += a.vy * dt
+      a.rot += a.spin * dt
+      if (a.x < a.r || a.x > W - a.r) a.vx *= -1
+    }
+    this.asteroids = this.asteroids.filter((a) => a.y < H + a.r + 20)
 
     // Enemy bullets
     for (const e of this.ebullets) { e.x += e.vx * dt; e.y += e.vy * dt }
@@ -586,11 +648,35 @@ export class GameEngine {
       }
     }
     this.aliens = this.aliens.filter((a) => a.hp > 0)
+
+    // player bullets vs asteroids
+    for (const b of this.bullets) {
+      for (const a of this.asteroids) {
+        if (a.hp <= 0) continue
+        if (b.hits.has(a.id)) continue
+        if (Math.hypot(b.x - a.x, b.y - a.y) < a.r + b.r) {
+          a.hp -= b.dmg
+          b.hits.add(a.id)
+          this.spawnParticles(b.x, b.y, '#c9b8a0', 4)
+          if (!b.pierce) { b.y = -999; break }
+        }
+      }
+    }
+    for (const a of this.asteroids) {
+      if (a.hp <= 0) {
+        const pts = 40 + Math.round(a.r * 4)
+        this.score += pts
+        this.addFloat(a.x, a.y, `+${pts}`, '#c9b8a0')
+        this.spawnParticles(a.x, a.y, '#a89880', Math.round(a.r))
+        audio.explosion()
+      }
+    }
+    this.asteroids = this.asteroids.filter((a) => a.hp > 0)
     this.bullets = this.bullets.filter((b) => b.y > -900)
 
     // boss death handled in checkStageEnd
 
-    // enemy bullets vs player
+    // hazards vs player
     if (this.invuln <= 0) {
       for (const e of this.ebullets) {
         if (Math.hypot(e.x - this.px, e.y - this.py) < e.r + 16) {
@@ -605,6 +691,16 @@ export class GameEngine {
           break
         }
       }
+      // asteroid vs player (destroys the asteroid on impact)
+      for (const a of this.asteroids) {
+        if (Math.hypot(a.x - this.px, a.y - this.py) < a.r + 14) {
+          this.spawnParticles(a.x, a.y, '#a89880', Math.round(a.r))
+          a.hp = 0
+          this.hurtPlayer()
+          break
+        }
+      }
+      this.asteroids = this.asteroids.filter((a) => a.hp > 0)
       if (this.boss && Math.abs(this.boss.x - this.px) < this.boss.w / 2 + 14 &&
         Math.abs(this.boss.y - this.py) < this.boss.h / 2 + 14) {
         this.hurtPlayer()
@@ -622,6 +718,15 @@ export class GameEngine {
   }
 
   private hurtPlayer() {
+    // Shields soak up hits first; only when depleted do you lose a life.
+    if (this.shield > 0) {
+      this.shield = Math.max(0, this.shield - SHIELD_HIT_COST)
+      this.invuln = 0.8
+      audio.bossHit()
+      this.spawnParticles(this.px, this.py, '#5ef0ff', 12)
+      this.addFloat(this.px, this.py - 26, 'SHIELD', '#5ef0ff')
+      return
+    }
     this.lives--
     this.invuln = 2
     audio.playerHit()
@@ -639,6 +744,14 @@ export class GameEngine {
       r: 10, t: Math.random() * 6, color: def.color, points: def.points,
       ammo: def.ammo, life: def.life,
     })
+    // occasional shield recharge cell
+    if (Math.random() < 0.12) {
+      const sh = GEMS.shield
+      this.gems.push({
+        id: 'shield', x: x - 14, y, vx: (Math.random() - 0.5) * 40, vy: -50,
+        r: 11, t: 0, color: sh.color, points: sh.points, shield: true,
+      })
+    }
     // rare med-kit
     if (Math.random() < 0.03) {
       const life = GEMS.life
@@ -656,6 +769,10 @@ export class GameEngine {
       this.lives++
       audio.life()
       this.addFloat(g.x, g.y, '+1 LIFE', '#ff5e5e')
+    } else if (g.shield) {
+      this.shield = Math.min(MAX_SHIELD, this.shield + SHIELD_GEM_RESTORE)
+      audio.powerup()
+      this.addFloat(g.x, g.y, '+SHIELD', '#5ef0ff')
     } else if (g.ammo) {
       this.ammoType = g.ammo
       this.ammoCount = AMMO_START[g.ammo]
@@ -761,6 +878,25 @@ export class GameEngine {
       ctx.fillRect(s.x, s.y, sz, sz)
     }
     ctx.globalAlpha = 1
+
+    // bottom buffer zone marker (mirrors the top HUD margin)
+    ctx.save()
+    ctx.strokeStyle = world.accent
+    ctx.globalAlpha = 0.18
+    ctx.setLineDash([8, 10])
+    ctx.beginPath()
+    ctx.moveTo(0, ENEMY_FLOOR + 8)
+    ctx.lineTo(W, ENEMY_FLOOR + 8)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.globalAlpha = 0.05
+    ctx.fillStyle = world.accent
+    ctx.fillRect(0, ENEMY_FLOOR + 8, W, H - (ENEMY_FLOOR + 8))
+    ctx.restore()
+    ctx.globalAlpha = 1
+
+    // asteroids
+    for (const a of this.asteroids) this.drawAsteroid(a)
 
     // gems
     for (const g of this.gems) this.drawGem(g)
@@ -886,6 +1022,48 @@ export class GameEngine {
     ctx.lineTo(5, 14)
     ctx.closePath()
     ctx.fill()
+    // shield bubble (opacity tracks remaining shield)
+    if (this.shield > 0) {
+      ctx.shadowBlur = 12
+      ctx.shadowColor = '#5ef0ff'
+      ctx.strokeStyle = '#5ef0ff'
+      ctx.globalAlpha = 0.25 + 0.6 * (this.shield / MAX_SHIELD)
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(0, -2, 26, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+    ctx.restore()
+  }
+
+  private drawAsteroid(a: Asteroid) {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.translate(a.x, a.y)
+    ctx.rotate(a.rot)
+    ctx.shadowBlur = 8
+    ctx.shadowColor = '#000000'
+    ctx.fillStyle = '#8a7d6b'
+    ctx.strokeStyle = '#5a5045'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    const n = a.shape.length
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * Math.PI * 2
+      const rr = a.r * a.shape[i]
+      const px = Math.cos(ang) * rr, py = Math.sin(ang) * rr
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+    }
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+    // a couple of craters
+    ctx.fillStyle = '#6b6155'
+    ctx.beginPath()
+    ctx.arc(-a.r * 0.25, -a.r * 0.15, a.r * 0.2, 0, Math.PI * 2)
+    ctx.arc(a.r * 0.3, a.r * 0.25, a.r * 0.14, 0, Math.PI * 2)
+    ctx.fill()
     ctx.restore()
   }
 
@@ -976,6 +1154,21 @@ export class GameEngine {
       // med cross
       ctx.fillRect(-g.r / 3, -g.r, (g.r / 3) * 2, g.r * 2)
       ctx.fillRect(-g.r, -g.r / 3, g.r * 2, (g.r / 3) * 2)
+    } else if (g.shield) {
+      // shield crest
+      ctx.rotate(-g.t * 2) // keep the crest upright
+      ctx.beginPath()
+      ctx.moveTo(0, -g.r)
+      ctx.lineTo(g.r, -g.r * 0.4)
+      ctx.lineTo(g.r * 0.7, g.r * 0.7)
+      ctx.lineTo(0, g.r)
+      ctx.lineTo(-g.r * 0.7, g.r * 0.7)
+      ctx.lineTo(-g.r, -g.r * 0.4)
+      ctx.closePath()
+      ctx.fill()
+      ctx.fillStyle = 'rgba(5,10,20,0.75)'
+      ctx.fillRect(-g.r / 4, -g.r * 0.5, g.r / 2, g.r * 1.1)
+      ctx.fillRect(-g.r * 0.55, -g.r * 0.08, g.r * 1.1, g.r / 3)
     } else {
       ctx.beginPath()
       ctx.moveTo(0, -g.r)
@@ -1005,9 +1198,23 @@ export class GameEngine {
     ctx.textAlign = 'left'
     ctx.font = 'bold 16px "Courier New", monospace'
     ctx.fillStyle = '#5ef0ff'
-    ctx.fillText(`SCORE ${this.score.toLocaleString()}`, 12, 26)
+    ctx.fillText(`SCORE ${this.score.toLocaleString()}`, 12, 20)
+
+    // shield bar under the score
+    const sbW = 150, sbX = 12, sbY = 28
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'
+    ctx.fillRect(sbX, sbY, sbW, 6)
+    ctx.fillStyle = this.shield > 0 ? '#5ef0ff' : '#3a4a63'
+    ctx.fillRect(sbX, sbY, sbW * (this.shield / MAX_SHIELD), 6)
+    ctx.strokeStyle = 'rgba(94,240,255,0.5)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(sbX, sbY, sbW, 6)
+    ctx.font = '9px "Courier New", monospace'
+    ctx.fillStyle = '#7ec8ff'
+    ctx.fillText('SHIELD', sbX + sbW + 6, sbY + 6)
 
     // lives as ships
+    ctx.font = 'bold 16px "Courier New", monospace'
     ctx.fillStyle = '#ff9e5e'
     for (let i = 0; i < Math.min(this.lives, 6); i++) {
       const lx = 250 + i * 22

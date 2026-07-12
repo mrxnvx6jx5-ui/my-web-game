@@ -6,7 +6,10 @@ A retro top-down space shooter with a story-mode campaign, built with React + Ty
 
 - **10 sectors (worlds)**, each with **4 bosses**. Each boss is guarded by **3 levels** you clear before the boss fight.
 - **Defeat 2 of a sector's 4 bosses** to unlock the next sector.
+- **Shields.** You start every level with full shields that absorb hits before you lose a life. Some gems drop **shield recharge cells**, and a rare Med-Kit grants an extra life.
 - **3 lives.** When they run out, it's game over and your run is recorded on the leaderboard.
+- **Asteroids** drift through tougher sectors (and all Intense/Insane runs) — shoot them for points or dodge them; a collision costs you shields/a life.
+- Enemies never reach the bottom of the screen: a buffer strip keeps your home row clear.
 - **Laser blasters:** start with the Pulse Laser and unlock a new blaster each time you clear a sector (up to 10). Toggle your active blaster any time in the **Armory** (or with `Q`/`E` and `1`–`9` in-game).
 - **Space gems** give points. Special ammo gems grant temporary power-ups: Rapid Fire, Spread Shot, Plasma Rounds, and Homing Missiles. A rare Med-Kit grants an extra life.
 - **Score** rewards gems collected, aliens blasted, and fast level/boss completion (time bonus).
