@@ -133,22 +133,54 @@ class AudioEngine {
     this.powerup()
   }
 
-  // Simple looping bassline / arpeggio for background music.
+  // Background music: an original circus/carnival-style chiptune waltz — a
+  // bouncy oom-pah bass under a whimsical, slightly eerie harmonic-minor melody,
+  // evoking a "digital circus" big-top without copying any copyrighted theme.
+  // Played through the same arcade synth as every other sound effect.
   private musicStep = 0
   startMusic() {
     if (!this.musicOn) return
     const ctx = this.ensure()
     if (!ctx || !this.musicGain) return
     this.stopMusic()
-    const bass = [55, 55, 82.4, 65.4, 55, 55, 73.4, 61.7]
-    const arp = [220, 329.6, 440, 329.6, 246.9, 329.6, 415.3, 329.6]
-    const stepMs = 260
+
+    // 3/4 waltz. Each bar is 3 beats: beat 1 = "oom" (low root), beats 2 & 3 =
+    // "pah" (a mid chord tone). 8 bars = 24 beats, then it loops.
+    const bass = [
+      110.0, 220.0, 220.0, //  Am — the tune begins
+      82.4, 164.8, 164.8, //   E  (harmonic-minor dominant → carnival colour)
+      130.8, 196.0, 196.0, //  C
+      110.0, 220.0, 220.0, //  Am
+      110.0, 220.0, 220.0, //  Am
+      98.0, 196.0, 196.0, //   G
+      110.0, 220.0, 220.0, //  Am
+      82.4, 164.8, 164.8, //   E  → turn-around back to Am
+    ]
+    // Whimsical top line (0 = rest). The G#4 (415.3) gives that creepy-clown lilt.
+    const melody = [
+      659.3, 440.0, 523.3, //  E5  A4  C5
+      493.9, 415.3, 493.9, //  B4  G#4 B4
+      523.3, 659.3, 587.3, //  C5  E5  D5
+      523.3, 493.9, 440.0, //  C5  B4  A4
+      659.3, 698.5, 659.3, //  E5  F5  E5
+      587.3, 523.3, 493.9, //  D5  C5  B4
+      440.0, 523.3, 493.9, //  A4  C5  B4
+      415.3, 493.9, 440.0, //  G#4 B4  A4
+    ]
+    const stepMs = 190 // ~190ms per beat = a bouncy carousel tempo
     this.musicStep = 0
     this.musicTimer = window.setInterval(() => {
       if (this.muted || !this.musicOn) return
       const i = this.musicStep % bass.length
-      this.blip(bass[i], stepMs / 1000 * 0.9, 'triangle', 0.5, undefined, this.musicGain!)
-      this.blip(arp[i], stepMs / 1000 * 0.5, 'square', 0.25, undefined, this.musicGain!)
+      const onBeat = i % 3 === 0
+      // oom-pah bass: a long low "oom" on beat 1, short mid "pah" on beats 2 & 3
+      this.blip(
+        bass[i], stepMs / 1000 * (onBeat ? 0.85 : 0.4),
+        onBeat ? 'triangle' : 'square', onBeat ? 0.5 : 0.22, undefined, this.musicGain!,
+      )
+      // melody voice
+      const m = melody[i]
+      if (m) this.blip(m, stepMs / 1000 * 0.7, 'square', 0.28, undefined, this.musicGain!)
       this.musicStep++
     }, stepMs)
   }
