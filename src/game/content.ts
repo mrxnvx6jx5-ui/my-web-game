@@ -1,7 +1,7 @@
 // Data-driven game content: worlds, bosses, blasters, gems.
 // Original deep-space theme — alien fleets, void monsters, and derelict hulks.
 
-import type { BlasterDef, Difficulty, DifficultyMod, GemDef, WorldDef } from './types'
+import type { BlasterDef, BossDef, Difficulty, DifficultyMod, GemDef, WorldDef } from './types'
 
 // Normal mirrors the original balance (all multipliers = 1). Easy dials
 // everything down; Intense and Insane crank enemy count, speed, and fire rate.
@@ -242,6 +242,28 @@ export const WORLDS: WorldDef[] = [
     ],
   },
 ]
+
+/**
+ * The final encounter. Once every world is cleared, the galaxy's true enemy
+ * awakens: a colossal titan that dwarfs every boss before it. It cycles through
+ * every attack pattern in the game and enrages at half health.
+ */
+export const FINAL_BOSS: BossDef = {
+  name: 'THE OMEGA TITAN',
+  title: 'Devourer of All Worlds',
+  color: '#ff5ef0',
+  hp: 2000,
+  weapon: 'ring',
+  kind: 'titan',
+}
+
+/** The arena the Omega Titan is fought in — the dead heart of the void. */
+export const FINAL_ARENA: WorldDef = {
+  name: 'The Throne of Oblivion',
+  subtitle: 'The end of everything',
+  bgTop: '#1a0020', bgBottom: '#000000', accent: '#ff5ef0',
+  bosses: [FINAL_BOSS],
+}
 
 /** Bosses you must defeat in a world to unlock the next one. */
 export const BOSSES_TO_ADVANCE = 2

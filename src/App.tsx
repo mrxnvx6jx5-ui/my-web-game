@@ -4,7 +4,7 @@ import GameCanvas from './components/GameCanvas'
 import { GameEngine } from './game/engine'
 import { audio } from './game/audio'
 import {
-  BLASTERS, BOSSES_TO_ADVANCE, DIFFICULTIES, DIFFICULTY_ORDER, TOTAL_WORLDS, WORLDS, bossKey,
+  BLASTERS, BOSSES_TO_ADVANCE, DIFFICULTIES, DIFFICULTY_ORDER, FINAL_BOSS, TOTAL_WORLDS, WORLDS, bossKey,
 } from './game/content'
 import type { Difficulty, HudState, Progress, StageConfig, StageResult } from './game/types'
 import { loadProgress, saveProgress } from './lib/storage'
@@ -13,7 +13,10 @@ import { fetchTop, submitScore, type ScoreRow } from './lib/leaderboard'
 type Screen =
   | 'title' | 'worldMap' | 'bossSelect' | 'armory'
   | 'playing' | 'levelComplete' | 'bossDefeated'
-  | 'gameOver' | 'leaderboard' | 'victory'
+  | 'gameOver' | 'leaderboard' | 'victory' | 'finalIntro'
+
+/** The climactic Omega Titan fight, unlocked once every world is cleared. */
+const FINAL_STAGE: StageConfig = { world: TOTAL_WORLDS - 1, boss: 0, level: 0, final: true }
 
 function countDefeated(progress: Progress, world: number): number {
   let n = 0
@@ -117,6 +120,16 @@ export default function App() {
     }
 
     if (result.type === 'bossDefeated') {
+      // The Omega Titan is down — the galaxy is truly saved.
+      if (stage.final) {
+        setProgress((p) => {
+          const np = { ...p, bestScore: Math.max(p.bestScore, result.stats.score) }
+          saveProgress(np)
+          return np
+        })
+        setScreen('victory')
+        return
+      }
       setProgress((p) => {
         const defeated = { ...p.defeatedBosses, [bossKey(stage.world, stage.boss)]: true }
         const np: Progress = { ...p, defeatedBosses: defeated }
@@ -140,7 +153,7 @@ export default function App() {
           : null)
         engineRef.current?.setOwnedBlasters(np.blasters)
         if (stage.world === TOTAL_WORLDS - 1 && cleared >= BOSSES_TO_ADVANCE) {
-          setScreen('victory')
+          setScreen('finalIntro') // every world cleared — the Titan awakens
         } else {
           setScreen('bossDefeated')
         }
@@ -248,6 +261,10 @@ export default function App() {
           onContinue={() => setScreen('bossSelect')}
           onMap={() => setScreen('worldMap')}
         />
+      )}
+
+      {screen === 'finalIntro' && (
+        <FinalIntroScreen onEngage={() => beginStage(FINAL_STAGE)} />
       )}
 
       {screen === 'victory' && lastResult && (
@@ -547,6 +564,23 @@ function BossDefeatedOverlay({ world, boss, stats, reward, onContinue, onMap }: 
   )
 }
 
+function FinalIntroScreen({ onEngage }: { onEngage: () => void }) {
+  return (
+    <div className="screen overlay-screen center-modal">
+      <div className="panel narrow" style={{ '--accent': FINAL_BOSS.color } as CSSProperties}>
+        <h1 className="game-title" style={{ color: FINAL_BOSS.color }}>THE TITAN AWAKENS</h1>
+        <p className="tagline">
+          Every sector has fallen — but the galaxy's true devourer stirs in the void.
+          <b style={{ color: FINAL_BOSS.color }}> {FINAL_BOSS.name}</b>, {FINAL_BOSS.title}, blocks your way home.
+        </p>
+        <p className="next-up" style={{ color: FINAL_BOSS.color }}>⚠ ONE FINAL BATTLE ⚠</p>
+        <p className="panel-sub">It wields every weapon you've faced — and grows deadlier at half health.</p>
+        <button className="btn btn-primary" onClick={onEngage}>ENTER THE THRONE ▶</button>
+      </div>
+    </div>
+  )
+}
+
 function VictoryScreen({ stats, onLeaderboard }: {
   stats: { score: number; timeMs: number }
   onLeaderboard: () => void
@@ -555,7 +589,7 @@ function VictoryScreen({ stats, onLeaderboard }: {
     <div className="screen overlay-screen center-modal">
       <div className="panel narrow victory">
         <h1 className="game-title">GALAXY SAVED</h1>
-        <p className="tagline">You crushed all 10 sectors. A legend is born.</p>
+        <p className="tagline">You toppled every sector and slew the Omega Titan. A legend is born.</p>
         <div className="stat-rows">
           <div><span>Final Score</span><b>{stats.score.toLocaleString()}</b></div>
           <div><span>Time</span><b>{(stats.timeMs / 1000 / 60).toFixed(1)} min</b></div>

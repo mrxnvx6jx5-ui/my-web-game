@@ -64,7 +64,7 @@ export type BossWeapon =
   | 'spread' | 'aimed' | 'spiral' | 'ring' | 'shotgun' | 'homing' | 'sweep' | 'mines'
 
 /** Visual archetype for the boss sprite. */
-export type BossKind = 'saucer' | 'warship' | 'monster' | 'alien'
+export type BossKind = 'saucer' | 'warship' | 'monster' | 'alien' | 'titan'
 
 export interface BossDef {
   name: string
@@ -110,6 +110,8 @@ export interface StageConfig {
   boss: number
   /** 1-3 for normal levels, 0 for the boss encounter. */
   level: number
+  /** The climactic Omega Titan fight after every world is cleared. */
+  final?: boolean
 }
 
 export type StageResult =

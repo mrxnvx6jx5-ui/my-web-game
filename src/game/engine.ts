@@ -3,13 +3,26 @@
 // via callbacks. React only owns the menus/overlays around it.
 
 import { audio } from './audio'
-import { BLASTERS, DIFFICULTIES, GEMS, GEM_DROP_POOL, WORLDS } from './content'
+import { BLASTERS, DIFFICULTIES, FINAL_ARENA, FINAL_BOSS, GEMS, GEM_DROP_POOL, WORLDS } from './content'
 import type {
-  AmmoType, BlasterDef, BossKind, BossWeapon, Difficulty, DifficultyMod, HudState, RunStats, StageConfig, StageResult,
+  AmmoType, BlasterDef, BossKind, BossWeapon, Difficulty, DifficultyMod, HudState, RunStats, StageConfig, StageResult, WorldDef,
 } from './types'
 
 export const W = 900
 export const H = 600
+
+// 8-bit look: the whole scene is drawn to an offscreen buffer, shrunk, then
+// blown back up with smoothing off so every sprite reads as chunky pixels.
+// Higher = blockier. 3 gives a ~300x200 "console" resolution.
+const PIXEL = 3
+const BW = Math.ceil(W / PIXEL)
+const BH = Math.ceil(H / PIXEL)
+
+// Pixel fonts (loaded via the Google Fonts <link> in index.html). Press Start
+// 2P for chunky headings, VT323 for readable HUD readouts. Both fall back to a
+// monospace face until the webfont finishes loading.
+const FONT_HEAD = '"Press Start 2P", "Courier New", monospace'
+const FONT_UI = '"VT323", "Courier New", monospace'
 
 interface Bullet {
   x: number; y: number; vx: number; vy: number; r: number
@@ -29,6 +42,8 @@ interface Boss {
   hp: number; maxHp: number; t: number; fireCd: number
   dir: number; name: string; title: string; color: string; spawnCd: number
   flash: number; weapon: BossWeapon; ang: number; kind: BossKind
+  /** The Omega Titan: rotates weapons, enrages at half HP, moves wider. */
+  final?: boolean; enraged?: boolean; wSwitch?: number; wIndex?: number
 }
 interface Mine {
   id: number; x: number; y: number; vx: number; vy: number
@@ -83,6 +98,11 @@ function segPointDist(ax: number, ay: number, bx: number, by: number, px: number
 
 export class GameEngine {
   private ctx: CanvasRenderingContext2D
+  // Onscreen context + the offscreen buffers used for the pixelation pass.
+  private screen: CanvasRenderingContext2D
+  private buf: CanvasRenderingContext2D
+  private small: CanvasRenderingContext2D
+  private scanlines: CanvasPattern | null = null
   private cb: Callbacks
   private raf = 0
   private lastT = 0
@@ -149,13 +169,39 @@ export class GameEngine {
   constructor(canvas: HTMLCanvasElement, cb: Callbacks) {
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('no 2d context')
+    this.screen = ctx
     this.ctx = ctx
     this.cb = cb
+
+    // Full-resolution buffer the world is painted into, and a small buffer it's
+    // shrunk down to before being blown back up (nearest-neighbour) onto screen.
+    const bufCanvas = document.createElement('canvas')
+    bufCanvas.width = W; bufCanvas.height = H
+    this.buf = bufCanvas.getContext('2d')!
+    const smallCanvas = document.createElement('canvas')
+    smallCanvas.width = BW; smallCanvas.height = BH
+    this.small = smallCanvas.getContext('2d')!
+    this.buildScanlines()
+
+    // Kick off loading the pixel webfonts so canvas text picks them up ASAP.
+    const df = (document as unknown as { fonts?: { load?: (f: string) => void } }).fonts
+    if (df?.load) { df.load(`16px ${FONT_HEAD}`); df.load(`16px ${FONT_UI}`) }
+
     for (let i = 0; i < 90; i++) {
       this.stars.push({ x: Math.random() * W, y: Math.random() * H, z: Math.random() * 0.9 + 0.1 })
     }
     this.runStartMs = performance.now()
     this.bindInput()
+  }
+
+  /** A cached 1x3 pattern used to lay faint CRT scanlines over the screen. */
+  private buildScanlines() {
+    const c = document.createElement('canvas')
+    c.width = 1; c.height = 3
+    const g = c.getContext('2d')!
+    g.fillStyle = 'rgba(0,0,0,0.22)'
+    g.fillRect(0, 2, 1, 1)
+    this.scanlines = this.screen.createPattern(c, 'repeat')
   }
 
   // ---- Session setup ----
@@ -213,7 +259,8 @@ export class GameEngine {
     this.stageBanner = 2.2
 
     if (cfg.level === 0) {
-      this.spawnBoss()
+      if (cfg.final) this.spawnFinalBoss()
+      else this.spawnBoss()
     } else {
       const world = cfg.world
       this.quota = Math.max(4, Math.round((8 + world * 2 + cfg.level * 3) * this.diff.quotaMul))
@@ -404,6 +451,18 @@ export class GameEngine {
     if (bdef.kind === 'monster' || bdef.kind === 'alien') { this.boss.w = 150; this.boss.h = 130 }
     else if (bdef.kind === 'saucer') { this.boss.w = 180; this.boss.h = 90 }
     else { this.boss.w = 170; this.boss.h = 100 }
+  }
+
+  /** The colossal end-game titan: huge, high HP, cycles every attack pattern. */
+  private spawnFinalBoss() {
+    const hp = Math.round(FINAL_BOSS.hp * (0.7 + this.diff.quotaMul * 0.3))
+    this.boss = {
+      id: this.idc++, x: W / 2, y: 150, w: 420, h: 240,
+      hp, maxHp: hp, t: 0, fireCd: 1.5, dir: 1,
+      name: FINAL_BOSS.name, title: FINAL_BOSS.title, color: FINAL_BOSS.color,
+      spawnCd: 4, flash: 0, weapon: 'ring', ang: 0, kind: 'titan',
+      final: true, enraged: false, wSwitch: 3.5, wIndex: 0,
+    }
   }
 
   private spawnMine(x: number, y: number) {
@@ -634,22 +693,47 @@ export class GameEngine {
     const boss = this.boss!
     boss.t += dt
     if (boss.flash > 0) boss.flash -= dt
-    boss.x += boss.dir * (70 + this.cfg.world * 6) * this.diff.enemySpeedMul * dt
-    if (boss.x < 90) { boss.x = 90; boss.dir = 1 }
-    if (boss.x > W - 90) { boss.x = W - 90; boss.dir = -1 }
-    boss.y = 110 + Math.sin(boss.t * 0.8) * 30
+    const margin = boss.final ? boss.w * 0.4 : 90
+    const speed = (70 + this.cfg.world * 6) * (boss.final ? 1.15 : 1) * (boss.enraged ? 1.4 : 1)
+    boss.x += boss.dir * speed * this.diff.enemySpeedMul * dt
+    if (boss.x < margin) { boss.x = margin; boss.dir = 1 }
+    if (boss.x > W - margin) { boss.x = W - margin; boss.dir = -1 }
+    boss.y = (boss.final ? 150 : 110) + Math.sin(boss.t * 0.8) * (boss.final ? 22 : 30)
+
+    if (boss.final) this.updateFinalBoss(boss, dt)
 
     boss.fireCd -= dt
     if (boss.fireCd <= 0) {
       boss.fireCd = this.fireBossWeapon(boss)
+      if (boss.enraged) boss.fireCd *= 0.6 // enraged titan fires far more often
       audio.enemyShoot()
     }
 
     boss.spawnCd -= dt
-    const bossMinionCap = Math.max(2, Math.round(3 * this.diff.maxConcurrentMul))
+    const bossMinionCap = Math.max(2, Math.round((boss.final ? 6 : 3) * this.diff.maxConcurrentMul))
     if (boss.spawnCd <= 0 && this.aliens.length < bossMinionCap && boss.weapon !== 'mines') {
-      boss.spawnCd = 4 * this.diff.spawnRateMul
+      boss.spawnCd = (boss.final ? 2.6 : 4) * this.diff.spawnRateMul
       this.spawnAlien()
+    }
+  }
+
+  /** Rotate the titan through every attack pattern; enrage past half health. */
+  private updateFinalBoss(boss: Boss, dt: number) {
+    boss.wSwitch = (boss.wSwitch ?? 0) - dt
+    if ((boss.wSwitch ?? 0) <= 0) {
+      const seq: BossWeapon[] = boss.enraged
+        ? ['ring', 'spiral', 'shotgun', 'sweep', 'aimed', 'mines']
+        : ['ring', 'spread', 'aimed', 'spiral', 'shotgun', 'mines']
+      boss.wIndex = ((boss.wIndex ?? 0) + 1) % seq.length
+      boss.weapon = seq[boss.wIndex]
+      boss.wSwitch = boss.enraged ? 2.4 : 3.4
+    }
+    if (!boss.enraged && boss.hp <= boss.maxHp * 0.5) {
+      boss.enraged = true
+      boss.color = '#ff3a4a'
+      this.addFloat(boss.x, boss.y - boss.h * 0.4, 'ENRAGED!', '#ff3a4a')
+      this.spawnParticles(boss.x, boss.y, '#ff3a4a', 48)
+      audio.bossDefeated()
     }
   }
 
@@ -1043,8 +1127,11 @@ export class GameEngine {
 
   // ---- Render ----
   private render() {
+    const world: WorldDef = this.cfg.final ? FINAL_ARENA : WORLDS[this.cfg.world]
+
+    // ==== World pass: paint the scene into the full-res offscreen buffer ====
+    this.ctx = this.buf
     const ctx = this.ctx
-    const world = WORLDS[this.cfg.world]
     // background gradient
     const grad = ctx.createLinearGradient(0, 0, 0, H)
     grad.addColorStop(0, world.bgTop)
@@ -1127,49 +1214,64 @@ export class GameEngine {
     // player
     this.drawPlayer()
 
-    // floats
-    ctx.textAlign = 'center'
-    ctx.font = 'bold 14px "Courier New", monospace'
-    for (const f of this.floats) {
-      ctx.globalAlpha = Math.max(0, f.life)
-      ctx.fillStyle = f.color
-      ctx.fillText(f.text, f.x, f.y)
+    // ==== Pixelate: buffer -> small (shrink) -> screen (blow up, no smoothing) ====
+    this.small.imageSmoothingEnabled = true
+    this.small.drawImage(this.buf.canvas, 0, 0, W, H, 0, 0, BW, BH)
+    const sc = this.screen
+    sc.imageSmoothingEnabled = false
+    sc.drawImage(this.small.canvas, 0, 0, BW, BH, 0, 0, W, H)
+
+    // faint CRT scanlines over the whole frame
+    if (this.scanlines) {
+      sc.save(); sc.fillStyle = this.scanlines; sc.fillRect(0, 0, W, H); sc.restore()
     }
-    ctx.globalAlpha = 1
+
+    // ==== UI pass: crisp pixel-font text straight onto the screen ====
+    this.ctx = this.screen
+    const ui = this.screen
+
+    // floats
+    ui.textAlign = 'center'
+    ui.font = `20px ${FONT_UI}`
+    for (const f of this.floats) {
+      ui.globalAlpha = Math.max(0, f.life)
+      ui.fillStyle = f.color
+      ui.fillText(f.text, f.x, f.y)
+    }
+    ui.globalAlpha = 1
 
     this.drawHud()
 
     if (this.stageBanner > 0) {
-      ctx.globalAlpha = Math.min(1, this.stageBanner)
-      ctx.textAlign = 'center'
-      ctx.fillStyle = world.accent
-      ctx.font = 'bold 46px "Courier New", monospace'
-      const label = this.cfg.level === 0
-        ? `BOSS: ${WORLDS[this.cfg.world].bosses[this.cfg.boss].name}`
-        : `LEVEL ${this.cfg.level}`
-      ctx.fillText(label, W / 2, H / 2 - 10)
-      ctx.font = '18px "Courier New", monospace'
-      ctx.fillStyle = '#ffffff'
-      ctx.fillText(world.name, W / 2, H / 2 + 22)
-      ctx.font = '13px "Courier New", monospace'
-      ctx.fillStyle = '#9fb0d0'
-      ctx.fillText(
+      ui.globalAlpha = Math.min(1, this.stageBanner)
+      ui.textAlign = 'center'
+      ui.fillStyle = world.accent
+      ui.font = `24px ${FONT_HEAD}`
+      const bossName = this.cfg.final ? FINAL_BOSS.name : WORLDS[this.cfg.world]?.bosses[this.cfg.boss]?.name
+      const label = this.cfg.level === 0 ? `BOSS: ${bossName}` : `LEVEL ${this.cfg.level}`
+      ui.fillText(label, W / 2, H / 2 - 10)
+      ui.font = `24px ${FONT_UI}`
+      ui.fillStyle = '#ffffff'
+      ui.fillText(world.name, W / 2, H / 2 + 26)
+      ui.font = `18px ${FONT_UI}`
+      ui.fillStyle = '#9fb0d0'
+      ui.fillText(
         this.touchEnabled ? 'Drag to move · auto-fire while touching' : 'Move: arrows/WASD · Fire: Space',
-        W / 2, H / 2 + 48,
+        W / 2, H / 2 + 52,
       )
-      ctx.globalAlpha = 1
+      ui.globalAlpha = 1
     }
 
     if (this.paused) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'
-      ctx.fillRect(0, 0, W, H)
-      ctx.textAlign = 'center'
-      ctx.fillStyle = '#5ef0ff'
-      ctx.font = 'bold 48px "Courier New", monospace'
-      ctx.fillText('PAUSED', W / 2, H / 2)
-      ctx.font = '16px "Courier New", monospace'
-      ctx.fillStyle = '#ffffff'
-      ctx.fillText('Press P or ESC to resume', W / 2, H / 2 + 36)
+      ui.fillStyle = 'rgba(0,0,0,0.6)'
+      ui.fillRect(0, 0, W, H)
+      ui.textAlign = 'center'
+      ui.fillStyle = '#5ef0ff'
+      ui.font = `40px ${FONT_HEAD}`
+      ui.fillText('PAUSED', W / 2, H / 2)
+      ui.font = `24px ${FONT_UI}`
+      ui.fillStyle = '#ffffff'
+      ui.fillText('Press P or ESC to resume', W / 2, H / 2 + 40)
     }
   }
 
@@ -1417,8 +1519,82 @@ export class GameEngine {
       case 'warship': this.drawBossWarship(b, body); break
       case 'monster': this.drawBossMonster(b, body); break
       case 'alien': this.drawBossAlien(b, body); break
+      case 'titan': this.drawBossTitan(b, body); break
     }
     ctx.restore()
+  }
+
+  // The Omega Titan: a colossal armored horror — spread wings, a crown of
+  // spikes, a blazing central core, and a ring of glaring eyes.
+  private drawBossTitan(b: Boss, body: string) {
+    const ctx = this.ctx
+    const w = b.w / 2, h = b.h / 2
+    const solid = body === '#ffffff' ? (b.enraged ? '#ff3a4a' : '#ff5ef0') : body
+    const core = b.enraged ? '#ff6a3a' : '#ff5ef0'
+    // outstretched wings
+    ctx.shadowBlur = 26
+    ctx.shadowColor = core
+    const wing = ctx.createLinearGradient(-w, 0, w, 0)
+    wing.addColorStop(0, '#2a0a30'); wing.addColorStop(0.5, this.lighten(solid, 20)); wing.addColorStop(1, '#2a0a30')
+    ctx.fillStyle = wing
+    for (const side of [-1, 1]) {
+      ctx.beginPath()
+      ctx.moveTo(0, -h * 0.2)
+      ctx.lineTo(side * w, -h * 0.9)
+      ctx.lineTo(side * w * 1.02, h * 0.1)
+      ctx.lineTo(side * w * 0.62, h * 0.5)
+      ctx.lineTo(side * w * 0.5, -h * 0.1)
+      ctx.closePath(); ctx.fill()
+      // wing ribs
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 3
+      for (let i = 1; i <= 3; i++) {
+        ctx.beginPath(); ctx.moveTo(side * w * 0.5, -h * 0.1)
+        ctx.lineTo(side * w * (0.5 + i * 0.16), -h * (0.9 - i * 0.28)); ctx.stroke()
+      }
+    }
+    // crown of spikes
+    ctx.fillStyle = '#e8e0f0'
+    ctx.shadowBlur = 10
+    for (let i = -3; i <= 3; i++) {
+      const sx = i * w * 0.12
+      ctx.beginPath()
+      ctx.moveTo(sx - w * 0.05, -h * 0.55)
+      ctx.lineTo(sx, -h * (0.95 + Math.abs(i) * 0.04))
+      ctx.lineTo(sx + w * 0.05, -h * 0.55)
+      ctx.closePath(); ctx.fill()
+    }
+    // armored body
+    const g = ctx.createRadialGradient(0, -h * 0.1, 6, 0, 0, w * 0.7)
+    g.addColorStop(0, this.lighten(solid, 30)); g.addColorStop(1, '#1a0620')
+    ctx.fillStyle = g
+    ctx.shadowBlur = 18; ctx.shadowColor = core
+    ctx.beginPath()
+    ctx.moveTo(0, -h * 0.6)
+    ctx.lineTo(w * 0.55, -h * 0.25)
+    ctx.lineTo(w * 0.62, h * 0.45)
+    ctx.lineTo(w * 0.3, h)
+    ctx.lineTo(-w * 0.3, h)
+    ctx.lineTo(-w * 0.62, h * 0.45)
+    ctx.lineTo(-w * 0.55, -h * 0.25)
+    ctx.closePath(); ctx.fill()
+    // ring of eyes
+    ctx.shadowBlur = 10; ctx.shadowColor = '#ffe45e'
+    ctx.fillStyle = '#ffe45e'
+    for (const [ex, ey] of [[-0.36, -0.2], [0.36, -0.2], [-0.22, 0.05], [0.22, 0.05], [0, -0.35]] as const) {
+      ctx.beginPath(); ctx.arc(ex * w, ey * h, 7, 0, Math.PI * 2); ctx.fill()
+    }
+    ctx.fillStyle = '#1a0a05'
+    for (const [ex, ey] of [[-0.36, -0.2], [0.36, -0.2], [-0.22, 0.05], [0.22, 0.05], [0, -0.35]] as const) {
+      ctx.beginPath(); ctx.arc(ex * w, ey * h, 3, 0, Math.PI * 2); ctx.fill()
+    }
+    // blazing central core (pulses; flares when enraged)
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(b.t * (b.enraged ? 8 : 3)))
+    const cr = w * 0.26 * (0.85 + pulse * 0.25)
+    ctx.shadowBlur = 30; ctx.shadowColor = core
+    const cg = ctx.createRadialGradient(0, h * 0.15, 2, 0, h * 0.15, cr)
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.4, core); cg.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = cg
+    ctx.beginPath(); ctx.arc(0, h * 0.15, cr, 0, Math.PI * 2); ctx.fill()
   }
 
   private lighten(hex: string, amt: number): string {
@@ -1666,7 +1842,7 @@ export class GameEngine {
     ctx.fillStyle = 'rgba(0,0,0,0.35)'
     ctx.fillRect(0, 0, W, 40)
     ctx.textAlign = 'left'
-    ctx.font = 'bold 16px "Courier New", monospace'
+    ctx.font = `22px ${FONT_UI}`
     ctx.fillStyle = '#5ef0ff'
     ctx.fillText(`SCORE ${this.score.toLocaleString()}`, 12, 20)
 
@@ -1679,12 +1855,12 @@ export class GameEngine {
     ctx.strokeStyle = 'rgba(94,240,255,0.5)'
     ctx.lineWidth = 1
     ctx.strokeRect(sbX, sbY, sbW, 6)
-    ctx.font = '9px "Courier New", monospace'
+    ctx.font = `14px ${FONT_UI}`
     ctx.fillStyle = '#7ec8ff'
-    ctx.fillText('SHIELD', sbX + sbW + 6, sbY + 6)
+    ctx.fillText('SHIELD', sbX + sbW + 6, sbY + 7)
 
     // lives as ships
-    ctx.font = 'bold 16px "Courier New", monospace'
+    ctx.font = `22px ${FONT_UI}`
     ctx.fillStyle = '#ff9e5e'
     for (let i = 0; i < Math.min(this.lives, 6); i++) {
       const lx = 250 + i * 22
@@ -1715,11 +1891,11 @@ export class GameEngine {
     ctx.fillText(this.blaster.name, W - 12, 18)
     if (this.ammoCount > 0 && this.ammoType) {
       ctx.fillStyle = '#ffe45e'
-      ctx.font = '12px "Courier New", monospace'
+      ctx.font = `18px ${FONT_UI}`
       ctx.fillText(`${this.ammoType.toUpperCase()} x${this.ammoCount}`, W - 12, 34)
     } else {
       ctx.fillStyle = '#8899aa'
-      ctx.font = '11px "Courier New", monospace'
+      ctx.font = `16px ${FONT_UI}`
       ctx.fillText('Q/E switch · 1-9 select', W - 12, 34)
     }
 
@@ -1734,12 +1910,12 @@ export class GameEngine {
       ctx.strokeRect(100, 48, bw, 16)
       ctx.textAlign = 'center'
       ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 12px "Courier New", monospace'
+      ctx.font = `18px ${FONT_UI}`
       ctx.fillText(`${this.boss.name} — ${this.boss.title}`, W / 2, 60)
     } else if (this.cfg.level !== 0) {
       ctx.textAlign = 'center'
       ctx.fillStyle = '#ffd65e'
-      ctx.font = '12px "Courier New", monospace'
+      ctx.font = `18px ${FONT_UI}`
       ctx.fillText(`${this.cfg.level ? `LEVEL ${this.cfg.level}` : ''}  —  Aliens ${Math.min(this.killedThisStage, this.quota)}/${this.quota}`, W / 2, 58)
     }
     ctx.restore()

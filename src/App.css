@@ -74,9 +74,11 @@
   z-index: 1;
 }
 .game-title {
-  font-size: clamp(40px, 9vw, 84px);
+  font-family: 'Press Start 2P', 'Courier New', monospace;
+  font-size: clamp(26px, 6vw, 52px);
+  line-height: 1.35;
   margin: 0;
-  letter-spacing: 6px;
+  letter-spacing: 2px;
   color: #5ef0ff;
   text-shadow: 0 0 18px rgba(94, 240, 255, 0.7), 0 0 40px rgba(94, 240, 255, 0.35);
   animation: floaty 3s ease-in-out infinite alternate;
