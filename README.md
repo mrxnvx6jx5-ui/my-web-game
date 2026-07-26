@@ -1,4 +1,4 @@
-# Cosmic Crusade
+# Raiders of the Galaxy
 
 A retro top-down space shooter with a story-mode campaign, built with React + TypeScript + Vite. Blast alien fleets, void monsters, and derelict war-machines across 10 original deep-space sectors — collect space gems, topple bosses, and save the galaxy.
 

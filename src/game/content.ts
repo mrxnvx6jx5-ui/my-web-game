@@ -12,7 +12,7 @@ export const DIFFICULTIES: Record<Difficulty, DifficultyMod> = {
     enemySpeedMul: 0.7, enemyFireMul: 1.6, bulletSpeedMul: 0.8, scoreMul: 0.8,
   },
   normal: {
-    key: 'normal', label: 'Normal', blurb: 'The classic Cosmic Crusade balance.', color: '#5ef0ff',
+    key: 'normal', label: 'Normal', blurb: 'The classic Raiders of the Galaxy balance.', color: '#5ef0ff',
     quotaMul: 1, spawnRateMul: 1, maxConcurrentMul: 1,
     enemySpeedMul: 1, enemyFireMul: 1, bulletSpeedMul: 1, scoreMul: 1,
   },

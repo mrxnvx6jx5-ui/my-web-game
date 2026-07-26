@@ -3,6 +3,8 @@
 import { BLASTERS } from '../game/content'
 import type { Progress } from '../game/types'
 
+// Storage keys keep the game's old "cosmic-crusade" prefix on purpose:
+// renaming them would orphan every existing player's saved progress.
 const KEY = 'cosmic-crusade-progress-v1'
 
 export function defaultProgress(): Progress {
