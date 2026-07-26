@@ -83,7 +83,16 @@
   text-shadow: 0 0 18px rgba(94, 240, 255, 0.7), 0 0 40px rgba(94, 240, 255, 0.35);
   animation: floaty 3s ease-in-out infinite alternate;
 }
-.game-title span { color: #ffd65e; text-shadow: 0 0 18px rgba(255, 214, 94, 0.7); }
+/* Second half of the title drops to its own line so the colour split lands on
+   the line break: RAIDERS / OF THE GALAXY. */
+.game-title span {
+  display: block;
+  /* Smaller so the 13-character second line fits without wrapping again. */
+  font-size: 0.68em;
+  margin-top: 4px;
+  color: #ffd65e;
+  text-shadow: 0 0 18px rgba(255, 214, 94, 0.7);
+}
 @keyframes floaty { from { transform: translateY(0); } to { transform: translateY(-8px); } }
 .tagline { color: #9fb0d0; font-size: 15px; line-height: 1.5; margin: 16px auto 26px; }
 

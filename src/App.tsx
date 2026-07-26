@@ -34,6 +34,8 @@ function countDefeated(progress: Progress, world: number): number {
 
 const IS_TOUCH_DEVICE = typeof window !== 'undefined' &&
   (('ontouchstart' in window) || (navigator.maxTouchPoints ?? 0) > 0)
+// Storage keys keep the old "cosmic-crusade" prefix so existing saves survive
+// the rename (see storage.ts).
 const TOUCH_KEY = 'cosmic-crusade-touch'
 
 function loadTouchPref(): boolean {
@@ -356,7 +358,7 @@ function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggle
     <div className="screen title-screen">
       <div className="stars-bg" />
       <div className="title-content">
-        <h1 className="game-title">COSMIC<span> CRUSADE</span></h1>
+        <h1 className="game-title">RAIDERS<span>OF THE GALAXY</span></h1>
         <p className="tagline">Blast aliens across 10 worlds. Collect gems. Topple bosses. Save the galaxy.</p>
         <div className="menu-buttons">
           <button className="btn btn-primary" onClick={onStart}>▶ START GAME</button>
