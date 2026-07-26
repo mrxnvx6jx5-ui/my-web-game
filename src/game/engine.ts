@@ -3,7 +3,11 @@
 // via callbacks. React only owns the menus/overlays around it.
 
 import { audio } from './audio'
-import { BLASTERS, DIFFICULTIES, FINAL_ARENA, FINAL_BOSS, GEMS, GEM_DROP_POOL, WORLDS } from './content'
+import {
+  BLASTERS, DIFFICULTIES, DRAGON_ARENA, DRAGON_BEAM_DURATION, DRAGON_BEAM_RECHARGE,
+  DRAGON_BEAM_WARNING, DRAGON_BOSS, DRAGON_MINE_INTERVAL, FINAL_ARENA, FINAL_BOSS,
+  GEMS, GEM_DROP_POOL, WORLDS,
+} from './content'
 import type {
   AmmoType, BlasterDef, BossKind, BossWeapon, Difficulty, DifficultyMod, HudState, RunStats, StageConfig, StageResult, WorldDef,
 } from './types'
@@ -44,6 +48,13 @@ interface Boss {
   flash: number; weapon: BossWeapon; ang: number; kind: BossKind
   /** The Omega Titan: rotates weapons, enrages at half HP, moves wider. */
   final?: boolean; enraged?: boolean; wSwitch?: number; wIndex?: number
+  /**
+   * Vorathrax, the three-headed dragon. Phase 1 spits a mine every 0.9s from
+   * alternating heads; below half health the heads add annihilation beams on a
+   * 5s-firing / 5s-recharge cycle. `beamAngs` is where each head is aiming.
+   */
+  dragon?: boolean; phase2?: boolean; mineCd?: number
+  beamOn?: boolean; beamT?: number; beamAngs?: number[]
 }
 interface Mine {
   id: number; x: number; y: number; vx: number; vy: number
@@ -85,6 +96,10 @@ const SHIELD_HIT_COST = 34
 const SHIELD_GEM_RESTORE = 50
 // Asteroids start appearing from this world index (0-based) onward.
 const ASTEROID_FROM_WORLD = 2
+// Half-width of a Vorathrax annihilation beam (the lethal core).
+const DRAGON_BEAM_HALF_W = 15
+// Hit radius of a dragon head — the triple-damage weak point.
+const DRAGON_HEAD_R = 34
 
 /** Shortest distance from point (px,py) to the segment (ax,ay)->(bx,by). */
 function segPointDist(ax: number, ay: number, bx: number, by: number, px: number, py: number): number {
@@ -259,7 +274,8 @@ export class GameEngine {
     this.stageBanner = 2.2
 
     if (cfg.level === 0) {
-      if (cfg.final) this.spawnFinalBoss()
+      if (cfg.dragon) this.spawnDragonBoss()
+      else if (cfg.final) this.spawnFinalBoss()
       else this.spawnBoss()
     } else {
       const world = cfg.world
@@ -463,6 +479,35 @@ export class GameEngine {
       spawnCd: 4, flash: 0, weapon: 'ring', ang: 0, kind: 'titan',
       final: true, enraged: false, wSwitch: 3.5, wIndex: 0,
     }
+  }
+
+  /**
+   * Vorathrax: the 30,000-hull three-headed dragon that ends the game.
+   * Its hull is fixed at every difficulty — the fight is long by design; the
+   * heads are weak points that take triple damage (see handleCollisions).
+   */
+  private spawnDragonBoss() {
+    const hp = DRAGON_BOSS.hp
+    this.boss = {
+      id: this.idc++, x: W / 2, y: 182, w: 460, h: 220,
+      hp, maxHp: hp, t: 0, fireCd: 999, dir: 1,
+      name: DRAGON_BOSS.name, title: DRAGON_BOSS.title, color: DRAGON_BOSS.color,
+      spawnCd: 999, flash: 0, weapon: 'mines', ang: 0, kind: 'dragon',
+      dragon: true, phase2: false, mineCd: DRAGON_MINE_INTERVAL,
+      beamOn: false, beamT: DRAGON_BEAM_RECHARGE, beamAngs: [0, 0, 0], wIndex: 0,
+    }
+  }
+
+  /** World-space mouth positions of the dragon's three heads. */
+  private dragonHeads(b: Boss): { x: number; y: number }[] {
+    const w = b.w / 2, h = b.h / 2
+    const sway = Math.sin(b.t * 1.3) * 10
+    const bob = Math.sin(b.t * 2.1) * 6
+    return [
+      { x: b.x - w * 0.52 + sway, y: b.y + h * 0.5 + bob },
+      { x: b.x + Math.sin(b.t * 1.7) * 8, y: b.y + h * 0.82 - bob },
+      { x: b.x + w * 0.52 - sway, y: b.y + h * 0.5 + bob },
+    ]
   }
 
   private spawnMine(x: number, y: number) {
@@ -693,12 +738,18 @@ export class GameEngine {
     const boss = this.boss!
     boss.t += dt
     if (boss.flash > 0) boss.flash -= dt
-    const margin = boss.final ? boss.w * 0.4 : 90
+    const margin = boss.final || boss.dragon ? boss.w * 0.4 : 90
     const speed = (70 + this.cfg.world * 6) * (boss.final ? 1.15 : 1) * (boss.enraged ? 1.4 : 1)
     boss.x += boss.dir * speed * this.diff.enemySpeedMul * dt
     if (boss.x < margin) { boss.x = margin; boss.dir = 1 }
     if (boss.x > W - margin) { boss.x = W - margin; boss.dir = -1 }
-    boss.y = (boss.final ? 150 : 110) + Math.sin(boss.t * 0.8) * (boss.final ? 22 : 30)
+    // The dragon hangs a little lower so its wings and spine clear the HUD.
+    const restY = boss.dragon ? 182 : boss.final ? 150 : 110
+    boss.y = restY + Math.sin(boss.t * 0.8) * (boss.final || boss.dragon ? 22 : 30)
+
+    // The dragon runs its own attack script (mines, then beams) — no generic
+    // weapon volleys and no minion escorts.
+    if (boss.dragon) { this.updateDragonBoss(boss, dt); return }
 
     if (boss.final) this.updateFinalBoss(boss, dt)
 
@@ -734,6 +785,68 @@ export class GameEngine {
       this.addFloat(boss.x, boss.y - boss.h * 0.4, 'ENRAGED!', '#ff3a4a')
       this.spawnParticles(boss.x, boss.y, '#ff3a4a', 48)
       audio.bossDefeated()
+    }
+  }
+
+  /**
+   * Vorathrax's two-phase script.
+   *
+   * Phase 1: the heads take turns spitting a drifting mine every 0.9 seconds.
+   * Phase 2 (under half hull): the heads also charge annihilation beams —
+   * 5 seconds of firing, 5 seconds of recharge, forever. A beam touching the
+   * ship is instant death, shields or not, so the mines pause while they burn.
+   */
+  private updateDragonBoss(boss: Boss, dt: number) {
+    // Half health: the dragon rears up and the beam batteries come online.
+    if (!boss.phase2 && boss.hp <= boss.maxHp * 0.5) {
+      boss.phase2 = true
+      boss.color = '#ff3a2a'
+      boss.beamOn = false
+      boss.beamT = DRAGON_BEAM_RECHARGE
+      this.addFloat(boss.x, boss.y - boss.h * 0.4, 'ANNIHILATION BEAMS ONLINE', '#ff3a2a')
+      this.spawnParticles(boss.x, boss.y, '#ff3a2a', 60)
+      audio.dragonRoar()
+    }
+
+    // Each head breathes outward from its own side (left head down-left, right
+    // head down-right) and sweeps slowly, so the beams carve three moving lanes
+    // instead of crossing into one wall.
+    boss.ang += dt * 0.5
+    boss.beamAngs = [0.42, 0, -0.42].map(
+      (base, i) => Math.PI / 2 + base + Math.sin(boss.ang + i * 0.8) * 0.34,
+    )
+
+    if (boss.phase2) {
+      boss.beamT = (boss.beamT ?? 0) - dt
+      if ((boss.beamT ?? 0) <= 0) {
+        if (boss.beamOn) {
+          boss.beamOn = false
+          boss.beamT = DRAGON_BEAM_RECHARGE
+        } else {
+          boss.beamOn = true
+          boss.beamT = DRAGON_BEAM_DURATION
+          audio.beamFire()
+        }
+      } else if (!boss.beamOn && (boss.beamT ?? 0) <= DRAGON_BEAM_WARNING &&
+        (boss.beamT ?? 0) + dt > DRAGON_BEAM_WARNING) {
+        audio.beamCharge() // one warning whine as the mouths start to glow
+      }
+    }
+
+    // Mines: one per head, in rotation, on a flat 0.9s cadence.
+    if (!boss.beamOn) {
+      boss.mineCd = (boss.mineCd ?? 0) - dt
+      if ((boss.mineCd ?? 0) <= 0) {
+        boss.mineCd = DRAGON_MINE_INTERVAL
+        if (this.mines.length < 16) {
+          const heads = this.dragonHeads(boss)
+          const head = heads[(boss.wIndex ?? 0) % heads.length]
+          boss.wIndex = ((boss.wIndex ?? 0) + 1) % heads.length
+          this.spawnMine(head.x, head.y + 10)
+          this.spawnParticles(head.x, head.y + 10, '#ff8a5e', 6)
+          audio.enemyShoot()
+        }
+      }
     }
   }
 
@@ -846,12 +959,20 @@ export class GameEngine {
       }
       if (this.boss && b.hits.has(this.boss.id) === false && this.boss.hp > 0) {
         const bs = this.boss
-        if (Math.abs(b.x - bs.x) < bs.w / 2 + b.r && Math.abs(b.y - bs.y) < bs.h / 2 + b.r) {
-          bs.hp -= b.dmg
+        // The dragon's three heads are weak points: shots into a skull bite
+        // three times as deep as shots that just scorch the armored body.
+        let headHit = false
+        if (bs.dragon) {
+          for (const hd of this.dragonHeads(bs)) {
+            if (Math.hypot(b.x - hd.x, b.y - hd.y) < DRAGON_HEAD_R + b.r) { headHit = true; break }
+          }
+        }
+        if (headHit || (Math.abs(b.x - bs.x) < bs.w / 2 + b.r && Math.abs(b.y - bs.y) < bs.h / 2 + b.r)) {
+          bs.hp -= headHit ? b.dmg * 3 : b.dmg
           bs.flash = 0.08
           b.hits.add(bs.id)
           audio.bossHit()
-          this.spawnParticles(b.x, b.y, bs.color, 3)
+          this.spawnParticles(b.x, b.y, headHit ? '#ffe45e' : bs.color, headHit ? 6 : 3)
           if (!b.pierce) b.y = -999
         }
       }
@@ -935,6 +1056,20 @@ export class GameEngine {
 
     // hazards vs player
     if (this.invuln <= 0) {
+      // Vorathrax's annihilation beams: touching one is instant death.
+      const bs = this.boss
+      if (bs?.dragon && bs.beamOn) {
+        const heads = this.dragonHeads(bs)
+        for (let i = 0; i < heads.length; i++) {
+          const a = bs.beamAngs?.[i] ?? Math.PI / 2
+          const hd = heads[i]
+          const ex = hd.x + Math.cos(a) * 1600, ey = hd.y + Math.sin(a) * 1600
+          if (segPointDist(hd.x, hd.y, ex, ey, this.px, this.py) < DRAGON_BEAM_HALF_W + 12) {
+            this.vaporizePlayer()
+            break
+          }
+        }
+      }
       for (const e of this.ebullets) {
         if (Math.hypot(e.x - this.px, e.y - this.py) < e.r + 16) {
           this.hurtPlayer()
@@ -980,6 +1115,28 @@ export class GameEngine {
       }
     }
     this.gems = this.gems.filter((g) => g.y < H + 100)
+  }
+
+  /**
+   * An annihilation beam connects: the ship is gone, shields and all — a whole
+   * life, instantly. The beam that got you shuts off so a single mistake can't
+   * chew through the rest of your lives while you respawn.
+   */
+  private vaporizePlayer() {
+    this.shield = 0
+    this.lives--
+    this.invuln = 2.5
+    audio.playerHit()
+    audio.bigExplosion()
+    this.spawnParticles(this.px, this.py, '#fff1c9', 26)
+    this.spawnParticles(this.px, this.py, '#ff5e5e', 34)
+    this.addFloat(this.px, this.py - 30, 'VAPORIZED!', '#ff3a2a')
+    this.ebullets = this.ebullets.filter((e) => Math.hypot(e.x - this.px, e.y - this.py) > 140)
+    if (this.boss?.dragon && this.boss.beamOn) {
+      this.boss.beamOn = false
+      this.boss.beamT = DRAGON_BEAM_RECHARGE
+    }
+    if (this.lives <= 0) this.endStage('gameOver')
   }
 
   private hurtPlayer(wipeShield = false) {
@@ -1060,7 +1217,9 @@ export class GameEngine {
         audio.bossDefeated()
         this.boss = null
         this.bossesDefeated++
-        this.score += Math.round((2000 + this.cfg.world * 500) * this.diff.scoreMul)
+        this.score += Math.round(
+          (this.cfg.dragon ? 50000 : 2000 + this.cfg.world * 500) * this.diff.scoreMul,
+        )
         this.endStage('bossDefeated')
       }
     } else {
@@ -1127,7 +1286,8 @@ export class GameEngine {
 
   // ---- Render ----
   private render() {
-    const world: WorldDef = this.cfg.final ? FINAL_ARENA : WORLDS[this.cfg.world]
+    const world: WorldDef = this.cfg.dragon ? DRAGON_ARENA
+      : this.cfg.final ? FINAL_ARENA : WORLDS[this.cfg.world]
 
     // ==== World pass: paint the scene into the full-res offscreen buffer ====
     this.ctx = this.buf
@@ -1247,7 +1407,9 @@ export class GameEngine {
       ui.textAlign = 'center'
       ui.fillStyle = world.accent
       ui.font = `24px ${FONT_HEAD}`
-      const bossName = this.cfg.final ? FINAL_BOSS.name : WORLDS[this.cfg.world]?.bosses[this.cfg.boss]?.name
+      const bossName = this.cfg.dragon ? DRAGON_BOSS.name
+        : this.cfg.final ? FINAL_BOSS.name
+          : WORLDS[this.cfg.world]?.bosses[this.cfg.boss]?.name
       const label = this.cfg.level === 0 ? `BOSS: ${bossName}` : `LEVEL ${this.cfg.level}`
       ui.fillText(label, W / 2, H / 2 - 10)
       ui.font = `24px ${FONT_UI}`
@@ -1520,8 +1682,239 @@ export class GameEngine {
       case 'monster': this.drawBossMonster(b, body); break
       case 'alien': this.drawBossAlien(b, body); break
       case 'titan': this.drawBossTitan(b, body); break
+      case 'dragon': this.drawBossDragon(b, body); break
     }
     ctx.restore()
+    // Beams are drawn in world space (they run the length of the arena), so
+    // they go outside the translated boss transform.
+    if (b.dragon) this.drawDragonBeams(b)
+  }
+
+  /**
+   * Vorathrax: vast membranous wings, an armored coiled body, and three long
+   * necks whose skulls glow hotter as the beams charge.
+   */
+  private drawBossDragon(b: Boss, body: string) {
+    const ctx = this.ctx
+    const w = b.w / 2, h = b.h / 2
+    const solid = body === '#ffffff' ? (b.phase2 ? '#ff3a2a' : '#ff7b3d') : body
+    const glow = b.phase2 ? '#ff3a2a' : '#ff9e5e'
+
+    // wings — huge, ribbed, swept back behind the body
+    ctx.shadowBlur = 26
+    ctx.shadowColor = glow
+    const beat = Math.sin(b.t * 1.6) * 0.12
+    for (const side of [-1, 1]) {
+      const wg = ctx.createLinearGradient(0, -h, side * w, h * 0.4)
+      wg.addColorStop(0, this.lighten(solid, 10))
+      wg.addColorStop(1, '#5c1606')
+      ctx.fillStyle = wg
+      ctx.beginPath()
+      ctx.moveTo(side * w * 0.22, -h * 0.35)
+      ctx.quadraticCurveTo(side * w * 0.8, -h * (1.15 + beat), side * w * 1.02, -h * 0.35)
+      ctx.quadraticCurveTo(side * w * 0.95, h * 0.1, side * w * 0.6, h * 0.28)
+      ctx.quadraticCurveTo(side * w * 0.5, -h * 0.1, side * w * 0.22, -h * 0.35)
+      ctx.closePath(); ctx.fill()
+      // wing fingers
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 3
+      for (let i = 1; i <= 3; i++) {
+        ctx.beginPath()
+        ctx.moveTo(side * w * 0.24, -h * 0.32)
+        ctx.lineTo(side * w * (0.35 + i * 0.2), -h * (0.9 - i * 0.3) - beat * h)
+        ctx.stroke()
+      }
+    }
+
+    // tail curling up behind the body
+    ctx.strokeStyle = solid
+    ctx.lineWidth = 16
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(0, -h * 0.1)
+    ctx.quadraticCurveTo(w * 0.25, -h * 1.0, -w * 0.1 + Math.sin(b.t * 1.2) * 26, -h * 1.35)
+    ctx.stroke()
+
+    // armored torso
+    const g = ctx.createRadialGradient(0, -h * 0.1, 6, 0, 0, w * 0.6)
+    g.addColorStop(0, this.lighten(solid, 40))
+    g.addColorStop(1, '#7a2409')
+    ctx.fillStyle = g
+    ctx.shadowBlur = 20
+    ctx.beginPath()
+    ctx.ellipse(0, 0, w * 0.5, h * 0.6, 0, 0, Math.PI * 2)
+    ctx.fill()
+    // chest scutes
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath()
+      ctx.ellipse(i * w * 0.13, h * 0.12, w * 0.055, h * 0.16, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    // spine ridge
+    ctx.fillStyle = '#f0e2c8'
+    for (let i = -3; i <= 3; i++) {
+      const sx = i * w * 0.1
+      ctx.beginPath()
+      ctx.moveTo(sx - w * 0.035, -h * 0.42)
+      ctx.lineTo(sx, -h * (0.72 - Math.abs(i) * 0.05))
+      ctx.lineTo(sx + w * 0.035, -h * 0.42)
+      ctx.closePath(); ctx.fill()
+    }
+
+    // necks + heads (local space; dragonHeads() mirrors these positions)
+    const heads = this.dragonHeads(b)
+    // How hot the mouths burn: full while firing, ramping up over the warning.
+    let heat = 0
+    if (b.phase2) {
+      if (b.beamOn) heat = 1
+      else {
+        const left = b.beamT ?? 0
+        heat = left <= DRAGON_BEAM_WARNING ? 1 - left / DRAGON_BEAM_WARNING : 0
+      }
+    }
+    for (let i = 0; i < heads.length; i++) {
+      const hx = heads[i].x - b.x, hy = heads[i].y - b.y
+      // neck
+      ctx.strokeStyle = solid
+      ctx.shadowBlur = 14
+      ctx.shadowColor = glow
+      ctx.lineWidth = 20
+      ctx.beginPath()
+      ctx.moveTo(hx * 0.18, -h * 0.15)
+      ctx.quadraticCurveTo(hx * 0.75, hy * 0.35, hx, hy - 14)
+      ctx.stroke()
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.moveTo(hx * 0.18, -h * 0.15)
+      ctx.quadraticCurveTo(hx * 0.75, hy * 0.35, hx, hy - 14)
+      ctx.stroke()
+      this.drawDragonHead(hx, hy, solid, glow, heat, b.t + i)
+    }
+
+    // molten core in the chest
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(b.t * (b.phase2 ? 7 : 3)))
+    const cr = w * 0.17 * (0.85 + pulse * 0.3)
+    ctx.shadowBlur = 30; ctx.shadowColor = glow
+    const cg = ctx.createRadialGradient(0, -h * 0.05, 2, 0, -h * 0.05, cr)
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.4, glow); cg.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = cg
+    ctx.beginPath(); ctx.arc(0, -h * 0.05, cr, 0, Math.PI * 2); ctx.fill()
+  }
+
+  /** One reptilian skull: horns, slit eye, and a maw that glows as it charges. */
+  private drawDragonHead(x: number, y: number, solid: string, glow: string, heat: number, t: number) {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(1.35, 1.35) // heads are the weak points — draw them big enough to aim at
+    ctx.shadowBlur = 16
+    ctx.shadowColor = glow
+    // horns sweeping back
+    ctx.fillStyle = '#f0e2c8'
+    for (const s of [-1, 1]) {
+      ctx.beginPath()
+      ctx.moveTo(s * 12, -16)
+      ctx.lineTo(s * 34, -40)
+      ctx.lineTo(s * 16, -8)
+      ctx.closePath(); ctx.fill()
+    }
+    // skull
+    const g = ctx.createLinearGradient(0, -24, 0, 30)
+    g.addColorStop(0, this.lighten(solid, 45))
+    g.addColorStop(1, '#5a1806')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(0, -26)
+    ctx.lineTo(20, -8)
+    ctx.lineTo(16, 18)
+    ctx.lineTo(0, 30)
+    ctx.lineTo(-16, 18)
+    ctx.lineTo(-20, -8)
+    ctx.closePath(); ctx.fill()
+    // slit eyes
+    ctx.shadowBlur = 10; ctx.shadowColor = '#ffe45e'
+    ctx.fillStyle = '#ffe45e'
+    for (const s of [-1, 1]) {
+      ctx.beginPath()
+      ctx.ellipse(s * 10, -6, 4.5, 2.6, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    // maw + teeth
+    ctx.shadowBlur = 0
+    const gape = 8 + Math.sin(t * 4) * 2 + heat * 5
+    ctx.fillStyle = '#2a0603'
+    ctx.beginPath(); ctx.ellipse(0, 16, 13, gape, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath()
+      ctx.moveTo(i * 8, 16 - gape + 1)
+      ctx.lineTo(i * 8 + 4, 16 - gape * 0.2)
+      ctx.lineTo(i * 8 - 4, 16 - gape * 0.2)
+      ctx.closePath(); ctx.fill()
+    }
+    // charging glow inside the mouth
+    if (heat > 0) {
+      const r = 4 + heat * 12
+      ctx.shadowBlur = 26; ctx.shadowColor = '#fff1c9'
+      const mg = ctx.createRadialGradient(0, 18, 1, 0, 18, r)
+      mg.addColorStop(0, '#ffffff')
+      mg.addColorStop(0.5, glow)
+      mg.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = mg
+      ctx.globalAlpha = 0.5 + heat * 0.5
+      ctx.beginPath(); ctx.arc(0, 18, r, 0, Math.PI * 2); ctx.fill()
+      ctx.globalAlpha = 1
+    }
+    ctx.restore()
+  }
+
+  /**
+   * The annihilation beams themselves, plus the thin targeting lines that
+   * telegraph where they're about to land during the last second of recharge.
+   */
+  private drawDragonBeams(b: Boss) {
+    if (!b.phase2) return
+    const ctx = this.ctx
+    const heads = this.dragonHeads(b)
+    const warning = !b.beamOn && (b.beamT ?? 0) <= DRAGON_BEAM_WARNING
+    if (!b.beamOn && !warning) return
+    const heat = b.beamOn ? 1 : 1 - (b.beamT ?? 0) / DRAGON_BEAM_WARNING
+    ctx.save()
+    for (let i = 0; i < heads.length; i++) {
+      const a = b.beamAngs?.[i] ?? Math.PI / 2
+      const hd = heads[i]
+      const ex = hd.x + Math.cos(a) * 1600, ey = hd.y + Math.sin(a) * 1600
+      ctx.lineCap = 'butt'
+      if (b.beamOn) {
+        // outer bloom -> mid body -> white-hot core
+        const flick = 0.85 + Math.random() * 0.15
+        ctx.shadowBlur = 30; ctx.shadowColor = '#ff3a2a'
+        ctx.globalAlpha = 0.35
+        ctx.strokeStyle = '#ff3a2a'
+        ctx.lineWidth = DRAGON_BEAM_HALF_W * 4 * flick
+        ctx.beginPath(); ctx.moveTo(hd.x, hd.y); ctx.lineTo(ex, ey); ctx.stroke()
+        ctx.globalAlpha = 0.9
+        ctx.strokeStyle = '#ff9e5e'
+        ctx.lineWidth = DRAGON_BEAM_HALF_W * 2 * flick
+        ctx.beginPath(); ctx.moveTo(hd.x, hd.y); ctx.lineTo(ex, ey); ctx.stroke()
+        ctx.globalAlpha = 1
+        ctx.strokeStyle = '#fff1c9'
+        ctx.lineWidth = DRAGON_BEAM_HALF_W * 0.8
+        ctx.beginPath(); ctx.moveTo(hd.x, hd.y); ctx.lineTo(ex, ey); ctx.stroke()
+      } else {
+        // targeting line
+        ctx.globalAlpha = 0.25 + heat * 0.5
+        ctx.shadowBlur = 8; ctx.shadowColor = '#ff3a2a'
+        ctx.strokeStyle = '#ff3a2a'
+        ctx.lineWidth = 2
+        ctx.setLineDash([10, 12])
+        ctx.beginPath(); ctx.moveTo(hd.x, hd.y); ctx.lineTo(ex, ey); ctx.stroke()
+        ctx.setLineDash([])
+      }
+    }
+    ctx.restore()
+    ctx.globalAlpha = 1
   }
 
   // The Omega Titan: a colossal armored horror — spread wings, a crown of
@@ -1912,6 +2305,23 @@ export class GameEngine {
       ctx.fillStyle = '#ffffff'
       ctx.font = `18px ${FONT_UI}`
       ctx.fillText(`${this.boss.name} — ${this.boss.title}`, W / 2, 60)
+      // Huge hull pools need a number, not just a sliver of bar.
+      if (this.boss.maxHp >= 1000) {
+        ctx.textAlign = 'right'
+        ctx.font = `16px ${FONT_UI}`
+        ctx.fillText(`${Math.max(0, Math.ceil(this.boss.hp)).toLocaleString()} / ${this.boss.maxHp.toLocaleString()}`, W - 104, 78)
+      }
+      // Beam status: the whole phase-2 dance is timing, so surface the clock.
+      if (this.boss.dragon && this.boss.phase2) {
+        ctx.textAlign = 'left'
+        ctx.font = `18px ${FONT_UI}`
+        const t = Math.max(0, this.boss.beamT ?? 0)
+        ctx.fillStyle = this.boss.beamOn ? '#ff3a2a' : '#ffd65e'
+        ctx.fillText(
+          this.boss.beamOn ? `☢ BEAMS FIRING ${t.toFixed(1)}s` : `BEAMS RECHARGING ${t.toFixed(1)}s`,
+          104, 78,
+        )
+      }
     } else if (this.cfg.level !== 0) {
       ctx.textAlign = 'center'
       ctx.fillStyle = '#ffd65e'
