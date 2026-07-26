@@ -331,6 +331,31 @@
 .leaderboard .lb-score { color: #5ef0ff; font-weight: bold; }
 .source-note { text-align: center; color: #7c8cad; font-size: 11px; margin-top: 12px; }
 
+/* ---------- Admin mode ---------- */
+.admin-box { margin-top: 14px; }
+.admin-toggle { opacity: 0.55; }
+.admin-toggle:hover { opacity: 1; }
+.admin-toggle.on {
+  opacity: 1; border-color: #5eff8a; color: #5eff8a;
+  box-shadow: 0 0 14px rgba(94, 255, 138, 0.3);
+}
+.admin-prompt { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.admin-input { width: 180px; margin: 0; text-align: center; letter-spacing: 3px; }
+.admin-error { color: #ff5e5e; font-size: 12px; letter-spacing: 2px; margin: 8px 0 0; }
+.admin-note {
+  color: #5eff8a; font-size: 12px; margin: 8px auto 0; max-width: 460px; line-height: 1.5;
+}
+.admin-tag {
+  color: #5eff8a; font-size: 11px; letter-spacing: 2px; margin-left: 10px;
+  border: 1px solid #5eff8a; border-radius: 6px; padding: 2px 8px; vertical-align: middle;
+}
+.admin-jump {
+  display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
+  margin-top: 16px; padding-top: 14px; border-top: 1px dashed #2b3a63;
+}
+.admin-jump-label { color: #5eff8a; font-size: 11px; letter-spacing: 2px; }
+.admin-jump .btn { border-color: var(--dc, #5ef0ff); color: var(--dc, #5ef0ff); }
+
 @media (max-width: 520px) {
   .panel { padding: 16px; }
   .game-title { letter-spacing: 3px; }

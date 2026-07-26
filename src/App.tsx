@@ -10,6 +10,7 @@ import {
 } from './game/content'
 import type { Difficulty, HudState, Progress, StageConfig, StageResult } from './game/types'
 import { loadProgress, saveProgress } from './lib/storage'
+import { checkPassword, loadAdmin, saveAdmin } from './lib/admin'
 import { fetchTop, submitScore, type ScoreRow } from './lib/leaderboard'
 
 type Screen =
@@ -68,16 +69,25 @@ export default function App() {
   const [musicOn, setMusicOn] = useState(true)
   const [touchControls, setTouchControls] = useState<boolean>(loadTouchPref)
   const [difficulty, setDifficulty] = useState<Difficulty>(loadDifficulty)
+  const [admin, setAdmin] = useState<boolean>(loadAdmin)
 
   const engineRef = useRef<GameEngine | null>(null)
 
+  // Admin mode hands out every blaster too — being able to drop into Sector 10
+  // with nothing but the starter Pulse Laser would make the jump useless.
+  const availableBlasters = useMemo(
+    () => (admin ? BLASTERS.map((b) => b.id) : progress.blasters),
+    [admin, progress.blasters],
+  )
+
   const onEngineReady = useCallback((engine: GameEngine) => {
     engineRef.current = engine
-    engine.setOwnedBlasters(progress.blasters)
+    engine.setOwnedBlasters(availableBlasters)
     engine.setTouchControls(touchControls)
     engine.setDifficulty(difficulty)
+    engine.setGodMode(admin)
     engine.pause()
-  }, [progress.blasters, touchControls, difficulty])
+  }, [availableBlasters, touchControls, difficulty, admin])
 
   // Keep the engine + storage in sync when the touch-controls option changes.
   useEffect(() => {
@@ -90,6 +100,13 @@ export default function App() {
     try { localStorage.setItem(DIFFICULTY_KEY, difficulty) } catch { /* ignore */ }
     engineRef.current?.setDifficulty(difficulty)
   }, [difficulty])
+
+  // Persist + apply admin mode, mid-run included.
+  useEffect(() => {
+    saveAdmin(admin)
+    engineRef.current?.setGodMode(admin)
+    engineRef.current?.setOwnedBlasters(availableBlasters)
+  }, [admin, availableBlasters])
 
   const onHud = useCallback((h: HudState) => setHud(h), [])
 
@@ -157,7 +174,7 @@ export default function App() {
         setReward(unlockedWorldReward !== undefined || blasterReward
           ? { world: unlockedWorldReward, blaster: blasterReward }
           : null)
-        engineRef.current?.setOwnedBlasters(np.blasters)
+        engineRef.current?.setOwnedBlasters(admin ? BLASTERS.map((b) => b.id) : np.blasters)
         if (stage.world === TOTAL_WORLDS - 1 && cleared >= BOSSES_TO_ADVANCE) {
           setScreen('finalIntro') // every world cleared — the Titan awakens
         } else {
@@ -167,7 +184,7 @@ export default function App() {
       })
       return
     }
-  }, [stage])
+  }, [stage, admin])
 
   const startRun = useCallback(() => {
     audio.unlock()
@@ -211,15 +228,20 @@ export default function App() {
           touchControls={touchControls}
           onToggleTouch={() => { audio.uiClick(); setTouchControls((v) => !v) }}
           difficulty={difficulty}
-          onSetDifficulty={(d) => { audio.uiClick(); setDifficulty(d) }} />
+          onSetDifficulty={(d) => { audio.uiClick(); setDifficulty(d) }}
+          admin={admin}
+          onSetAdmin={setAdmin} />
       )}
 
       {screen === 'worldMap' && (
         <WorldMap
           progress={progress}
+          admin={admin}
           onSelect={(w) => { audio.uiClick(); setActiveWorld(w); setScreen('bossSelect') }}
           onArmory={() => setScreen('armory')}
           onQuit={quitToTitle}
+          onTitan={() => { audio.uiClick(); beginStage(FINAL_STAGE) }}
+          onDragon={() => { audio.uiClick(); beginStage(DRAGON_STAGE) }}
         />
       )}
 
@@ -236,6 +258,7 @@ export default function App() {
       {screen === 'armory' && (
         <Armory
           progress={progress}
+          admin={admin}
           activeBlaster={hud?.blasterName}
           onSelect={selectBlaster}
           onBack={() => setScreen(inRun ? 'bossSelect' : 'title')}
@@ -286,6 +309,7 @@ export default function App() {
           stats={lastResult.stats}
           bestScore={progress.bestScore}
           difficulty={difficulty}
+          admin={admin}
           onDone={() => setScreen('leaderboard')}
         />
       )}
@@ -299,7 +323,7 @@ export default function App() {
 
 /* ------------------------------ Screens ------------------------------ */
 
-function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggleTouch, difficulty, onSetDifficulty }: {
+function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggleTouch, difficulty, onSetDifficulty, admin, onSetAdmin }: {
   progress: Progress
   onStart: () => void
   onLeaderboard: () => void
@@ -307,8 +331,27 @@ function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggle
   onToggleTouch: () => void
   difficulty: Difficulty
   onSetDifficulty: (d: Difficulty) => void
+  admin: boolean
+  onSetAdmin: (on: boolean) => void
 }) {
   const diff = DIFFICULTIES[difficulty]
+  const [showPrompt, setShowPrompt] = useState(false)
+  const [pw, setPw] = useState('')
+  const [bad, setBad] = useState(false)
+
+  const submitPw = () => {
+    if (checkPassword(pw)) {
+      onSetAdmin(true)
+      audio.powerup()
+      setShowPrompt(false)
+      setPw('')
+      setBad(false)
+    } else {
+      setBad(true)
+      audio.uiClick()
+    }
+  }
+
   return (
     <div className="screen title-screen">
       <div className="stars-bg" />
@@ -343,6 +386,45 @@ function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggle
         <button className={`btn small touch-toggle ${touchControls ? 'on' : ''}`} onClick={onToggleTouch}>
           📱 Touch Controls: {touchControls ? 'ON' : 'OFF'}
         </button>
+
+        <div className="admin-box">
+          {admin ? (
+            <button className="btn small admin-toggle on"
+              onClick={() => { audio.uiClick(); onSetAdmin(false) }}>
+              🛡 ADMIN MODE: ON — click to disable
+            </button>
+          ) : showPrompt ? (
+            <div className="admin-prompt">
+              <input
+                className="name-input admin-input"
+                type="password"
+                maxLength={32}
+                value={pw}
+                placeholder="PASSWORD"
+                onChange={(e) => { setPw(e.target.value); setBad(false) }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitPw()
+                  if (e.key === 'Escape') { setShowPrompt(false); setPw(''); setBad(false) }
+                }}
+                autoFocus
+              />
+              <button className="btn small" onClick={submitPw}>UNLOCK</button>
+              <button className="btn small ghost"
+                onClick={() => { setShowPrompt(false); setPw(''); setBad(false) }}>✕</button>
+            </div>
+          ) : (
+            <button className="btn small admin-toggle"
+              onClick={() => { audio.uiClick(); setShowPrompt(true) }}>
+              🛡 ADMIN
+            </button>
+          )}
+          {bad && <p className="admin-error">WRONG PASSWORD</p>}
+          {admin && (
+            <p className="admin-note">
+              Every sector unlocked · every blaster · no damage. Admin runs are not submitted to the leaderboard.
+            </p>
+          )}
+        </div>
         <div className="controls-hint">
           {touchControls
             ? <><b>Touch:</b> Drag anywhere to move · auto-fire while touching · on-screen buttons swap blaster &amp; pause</>
@@ -353,17 +435,20 @@ function TitleScreen({ progress, onStart, onLeaderboard, touchControls, onToggle
   )
 }
 
-function WorldMap({ progress, onSelect, onArmory, onQuit }: {
+function WorldMap({ progress, admin, onSelect, onArmory, onQuit, onTitan, onDragon }: {
   progress: Progress
+  admin: boolean
   onSelect: (w: number) => void
   onArmory: () => void
   onQuit: () => void
+  onTitan: () => void
+  onDragon: () => void
 }) {
   return (
     <div className="screen overlay-screen">
       <div className="panel wide">
         <div className="panel-head">
-          <h2>SELECT SECTOR</h2>
+          <h2>SELECT SECTOR{admin && <span className="admin-tag">🛡 ADMIN</span>}</h2>
           <div className="head-actions">
             <button className="btn small" onClick={onArmory}>🔫 ARMORY</button>
             <button className="btn small ghost" onClick={onQuit}>✕ QUIT</button>
@@ -371,7 +456,8 @@ function WorldMap({ progress, onSelect, onArmory, onQuit }: {
         </div>
         <div className="world-grid">
           {WORLDS.map((w, i) => {
-            const locked = i > progress.unlockedWorld
+            // Admin mode ignores progression — every sector is open.
+            const locked = !admin && i > progress.unlockedWorld
             const defeated = countDefeated(progress, i)
             const complete = defeated >= BOSSES_TO_ADVANCE
             return (
@@ -392,7 +478,20 @@ function WorldMap({ progress, onSelect, onArmory, onQuit }: {
             )
           })}
         </div>
-        <p className="hint">Defeat {BOSSES_TO_ADVANCE} of 4 bosses in a sector to unlock the next.</p>
+        {admin && (
+          <div className="admin-jump">
+            <span className="admin-jump-label">🛡 JUMP TO THE ENDGAME</span>
+            <button className="btn small" style={{ '--dc': FINAL_BOSS.color } as CSSProperties}
+              onClick={onTitan}>☄ {FINAL_BOSS.name}</button>
+            <button className="btn small" style={{ '--dc': DRAGON_BOSS.color } as CSSProperties}
+              onClick={onDragon}>🐉 {DRAGON_BOSS.name}</button>
+          </div>
+        )}
+        <p className="hint">
+          {admin
+            ? 'Admin mode: every sector is open and nothing can damage your ship.'
+            : `Defeat ${BOSSES_TO_ADVANCE} of 4 bosses in a sector to unlock the next.`}
+        </p>
       </div>
     </div>
   )
@@ -440,8 +539,9 @@ function BossSelect({ world, progress, onPick, onArmory, onBack }: {
   )
 }
 
-function Armory({ progress, activeBlaster, onSelect, onBack }: {
+function Armory({ progress, admin, activeBlaster, onSelect, onBack }: {
   progress: Progress
+  admin: boolean
   activeBlaster?: string
   onSelect: (id: string) => void
   onBack: () => void
@@ -456,7 +556,7 @@ function Armory({ progress, activeBlaster, onSelect, onBack }: {
         <p className="panel-sub">Toggle your active blaster. Unlock more by clearing sectors.</p>
         <div className="blaster-grid">
           {BLASTERS.map((b) => {
-            const owned = progress.blasters.includes(b.id)
+            const owned = admin || progress.blasters.includes(b.id)
             const active = activeBlaster === b.name
             return (
               <button key={b.id}
@@ -639,10 +739,11 @@ function VictoryScreen({ stats, onLeaderboard }: {
   )
 }
 
-function GameOverScreen({ stats, bestScore, difficulty, onDone }: {
+function GameOverScreen({ stats, bestScore, difficulty, admin, onDone }: {
   stats: { score: number; gems: number; kills: number; bossesDefeated: number; worldsCleared: number; timeMs: number }
   bestScore: number
   difficulty: Difficulty
+  admin: boolean
   onDone: () => void
 }) {
   const [name, setName] = useState('')
@@ -679,19 +780,30 @@ function GameOverScreen({ stats, bestScore, difficulty, onDone }: {
           <div><span>Bosses defeated</span><b>{stats.bossesDefeated}</b></div>
           <div><span>Time survived</span><b>{(stats.timeMs / 1000).toFixed(0)}s</b></div>
         </div>
-        <label className="name-label">ENTER YOUR PILOT NAME</label>
-        <input
-          className="name-input"
-          maxLength={24}
-          value={name}
-          placeholder="ANONYMOUS PILOT"
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !submitting && !done) submit() }}
-          autoFocus
-        />
-        <button className="btn btn-primary" disabled={submitting || done} onClick={submit}>
-          {submitting ? 'SUBMITTING…' : 'SUBMIT TO LEADERBOARD ▶'}
-        </button>
+        {admin ? (
+          <>
+            <p className="admin-note">
+              🛡 Admin run — no damage was taken, so this score is not submitted to the leaderboard.
+            </p>
+            <button className="btn btn-primary" onClick={onDone}>VIEW LEADERBOARD ▶</button>
+          </>
+        ) : (
+          <>
+            <label className="name-label">ENTER YOUR PILOT NAME</label>
+            <input
+              className="name-input"
+              maxLength={24}
+              value={name}
+              placeholder="ANONYMOUS PILOT"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !submitting && !done) submit() }}
+              autoFocus
+            />
+            <button className="btn btn-primary" disabled={submitting || done} onClick={submit}>
+              {submitting ? 'SUBMITTING…' : 'SUBMIT TO LEADERBOARD ▶'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
