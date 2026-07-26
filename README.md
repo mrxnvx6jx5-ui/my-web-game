@@ -8,6 +8,7 @@ A retro top-down space shooter with a story-mode campaign, built with React + Ty
 - **Enemies** come in three flavors: alien fighter **ships**, fleshy **alien creatures**, and hulking **space monsters**.
 - **Unique bosses.** Each is one of four hand-drawn archetypes — a **flying saucer**, a **winged warship**, a hulking **monster**, or a giant **alien** — and every boss has a signature weapon: spread volleys, targeted bursts, spiral storms, bullet rings, shotgun clusters, homing orbs, sweeping walls, or slow-drifting **space mines** that explode into shrapnel (shoot them early or dodge them).
 - **Defeat 2 of a sector's 4 bosses** to unlock the next sector.
+- **The endgame.** Clear Sector 10 and the **Omega Titan** awakens — and behind it waits **VORATHRAX, the Three-Headed Devourer**: a 30,000-hull dragon whose heads spit a mine every 0.9 seconds, then, below half health, sweep the arena with annihilation beams that kill in one touch (5 seconds firing, 5 to recharge). Shields won't save you — dodge, and aim for the heads: a skull takes **triple damage**.
 - **Shields.** You start every level with full shields that absorb hits before you lose a life. Some gems drop **shield recharge cells**, and a rare Med-Kit grants an extra life.
 - **3 lives.** When they run out, it's game over and your run is recorded on the leaderboard.
 - **Asteroids** drift through tougher sectors (and all Intense/Insane runs) — shoot them for points or dodge them; a collision costs you shields/a life.

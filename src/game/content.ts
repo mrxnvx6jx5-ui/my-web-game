@@ -265,6 +265,38 @@ export const FINAL_ARENA: WorldDef = {
   bosses: [FINAL_BOSS],
 }
 
+/**
+ * The true last stand, fought at the end of World 10 once the Omega Titan
+ * falls: a colossal three-headed void dragon with 30,000 hull.
+ *
+ * Phase 1 — each head spits a drifting mine every 0.9 seconds.
+ * Phase 2 (below half health) — the heads charge and unleash annihilation
+ * beams that vaporize the player instantly: 5 seconds firing, 5 to recharge.
+ */
+export const DRAGON_BOSS: BossDef = {
+  name: 'VORATHRAX',
+  title: 'The Three-Headed Devourer',
+  color: '#ff7b3d',
+  hp: 30000,
+  weapon: 'mines',
+  kind: 'dragon',
+}
+
+/** Vorathrax's lair — a burning rift torn in the edge of the galaxy. */
+export const DRAGON_ARENA: WorldDef = {
+  name: 'The Ashen Rift',
+  subtitle: "Where the dragon coils around the galaxy's last star",
+  bgTop: '#2a0a04', bgBottom: '#050100', accent: '#ff7b3d',
+  bosses: [DRAGON_BOSS],
+}
+
+/** Vorathrax fight timings (seconds). */
+export const DRAGON_MINE_INTERVAL = 0.9
+export const DRAGON_BEAM_DURATION = 5
+export const DRAGON_BEAM_RECHARGE = 5
+/** How long before a beam fires the heads glow as a warning. */
+export const DRAGON_BEAM_WARNING = 1.1
+
 /** Bosses you must defeat in a world to unlock the next one. */
 export const BOSSES_TO_ADVANCE = 2
 export const TOTAL_WORLDS = WORLDS.length

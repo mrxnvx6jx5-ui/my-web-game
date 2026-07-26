@@ -64,7 +64,7 @@ export type BossWeapon =
   | 'spread' | 'aimed' | 'spiral' | 'ring' | 'shotgun' | 'homing' | 'sweep' | 'mines'
 
 /** Visual archetype for the boss sprite. */
-export type BossKind = 'saucer' | 'warship' | 'monster' | 'alien' | 'titan'
+export type BossKind = 'saucer' | 'warship' | 'monster' | 'alien' | 'titan' | 'dragon'
 
 export interface BossDef {
   name: string
@@ -112,6 +112,8 @@ export interface StageConfig {
   level: number
   /** The climactic Omega Titan fight after every world is cleared. */
   final?: boolean
+  /** The true last stand: Vorathrax, the three-headed dragon. */
+  dragon?: boolean
 }
 
 export type StageResult =

@@ -129,6 +129,22 @@ class AudioEngine {
   uiClick() {
     this.blip(600, 0.05, 'square', 0.12)
   }
+  /** Vorathrax announcing itself: a low, guttural three-headed bellow. */
+  dragonRoar() {
+    this.blip(70, 0.9, 'sawtooth', 0.3, 42)
+    window.setTimeout(() => this.blip(95, 0.7, 'sawtooth', 0.24, 55), 120)
+    window.setTimeout(() => this.blip(58, 1.0, 'triangle', 0.28, 34), 240)
+    this.noise(0.8, 0.25, 420)
+  }
+  /** Rising whine as the heads charge their annihilation beams. */
+  beamCharge() {
+    this.blip(180, 1.0, 'sawtooth', 0.16, 1500)
+  }
+  /** The beams going live. */
+  beamFire() {
+    this.noise(0.5, 0.4, 2600)
+    this.blip(1400, 0.5, 'square', 0.16, 300)
+  }
   unlock_() {
     this.powerup()
   }

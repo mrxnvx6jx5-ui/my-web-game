@@ -4,7 +4,9 @@ import GameCanvas from './components/GameCanvas'
 import { GameEngine } from './game/engine'
 import { audio } from './game/audio'
 import {
-  BLASTERS, BOSSES_TO_ADVANCE, DIFFICULTIES, DIFFICULTY_ORDER, FINAL_BOSS, TOTAL_WORLDS, WORLDS, bossKey,
+  BLASTERS, BOSSES_TO_ADVANCE, DIFFICULTIES, DIFFICULTY_ORDER, DRAGON_BEAM_DURATION,
+  DRAGON_BEAM_RECHARGE, DRAGON_BOSS, DRAGON_MINE_INTERVAL, FINAL_BOSS, TOTAL_WORLDS,
+  WORLDS, bossKey,
 } from './game/content'
 import type { Difficulty, HudState, Progress, StageConfig, StageResult } from './game/types'
 import { loadProgress, saveProgress } from './lib/storage'
@@ -13,10 +15,13 @@ import { fetchTop, submitScore, type ScoreRow } from './lib/leaderboard'
 type Screen =
   | 'title' | 'worldMap' | 'bossSelect' | 'armory'
   | 'playing' | 'levelComplete' | 'bossDefeated'
-  | 'gameOver' | 'leaderboard' | 'victory' | 'finalIntro'
+  | 'gameOver' | 'leaderboard' | 'victory' | 'finalIntro' | 'dragonIntro'
 
 /** The climactic Omega Titan fight, unlocked once every world is cleared. */
 const FINAL_STAGE: StageConfig = { world: TOTAL_WORLDS - 1, boss: 0, level: 0, final: true }
+
+/** And behind the Titan: Vorathrax, the 30,000-hull three-headed dragon. */
+const DRAGON_STAGE: StageConfig = { world: TOTAL_WORLDS - 1, boss: 0, level: 0, final: true, dragon: true }
 
 function countDefeated(progress: Progress, world: number): number {
   let n = 0
@@ -120,14 +125,15 @@ export default function App() {
     }
 
     if (result.type === 'bossDefeated') {
-      // The Omega Titan is down — the galaxy is truly saved.
       if (stage.final) {
         setProgress((p) => {
           const np = { ...p, bestScore: Math.max(p.bestScore, result.stats.score) }
           saveProgress(np)
           return np
         })
-        setScreen('victory')
+        // The Titan only guarded the door — Vorathrax is what's behind it.
+        // Slay the dragon and the galaxy is truly saved.
+        setScreen(stage.dragon ? 'victory' : 'dragonIntro')
         return
       }
       setProgress((p) => {
@@ -265,6 +271,10 @@ export default function App() {
 
       {screen === 'finalIntro' && (
         <FinalIntroScreen onEngage={() => beginStage(FINAL_STAGE)} />
+      )}
+
+      {screen === 'dragonIntro' && (
+        <DragonIntroScreen onEngage={() => beginStage(DRAGON_STAGE)} />
       )}
 
       {screen === 'victory' && lastResult && (
@@ -581,6 +591,32 @@ function FinalIntroScreen({ onEngage }: { onEngage: () => void }) {
   )
 }
 
+function DragonIntroScreen({ onEngage }: { onEngage: () => void }) {
+  return (
+    <div className="screen overlay-screen center-modal">
+      <div className="panel narrow" style={{ '--accent': DRAGON_BOSS.color } as CSSProperties}>
+        <h1 className="game-title" style={{ color: DRAGON_BOSS.color }}>THE DRAGON UNCOILS</h1>
+        <p className="tagline">
+          The Titan was only a watchdog. Beyond its corpse the rift splits open and
+          <b style={{ color: DRAGON_BOSS.color }}> {DRAGON_BOSS.name}</b>, {DRAGON_BOSS.title},
+          raises all three of its heads.
+        </p>
+        <div className="stat-rows">
+          <div><span>Hull</span><b>{DRAGON_BOSS.hp.toLocaleString()} HP</b></div>
+          <div><span>Phase 1</span><b>Mine every {DRAGON_MINE_INTERVAL}s</b></div>
+          <div><span>Phase 2</span><b>Beams {DRAGON_BEAM_DURATION}s / {DRAGON_BEAM_RECHARGE}s recharge</b></div>
+        </div>
+        <p className="next-up" style={{ color: DRAGON_BOSS.color }}>☢ THE BEAMS KILL IN ONE TOUCH ☢</p>
+        <p className="panel-sub">
+          Shields will not save you from them — dodge, and put your shots through the heads:
+          a skull takes triple damage.
+        </p>
+        <button className="btn btn-primary" onClick={onEngage}>FACE THE DRAGON ▶</button>
+      </div>
+    </div>
+  )
+}
+
 function VictoryScreen({ stats, onLeaderboard }: {
   stats: { score: number; timeMs: number }
   onLeaderboard: () => void
@@ -589,7 +625,10 @@ function VictoryScreen({ stats, onLeaderboard }: {
     <div className="screen overlay-screen center-modal">
       <div className="panel narrow victory">
         <h1 className="game-title">GALAXY SAVED</h1>
-        <p className="tagline">You toppled every sector and slew the Omega Titan. A legend is born.</p>
+        <p className="tagline">
+          You toppled every sector, slew the Omega Titan, and cut the heads off Vorathrax itself.
+          A legend is born.
+        </p>
         <div className="stat-rows">
           <div><span>Final Score</span><b>{stats.score.toLocaleString()}</b></div>
           <div><span>Time</span><b>{(stats.timeMs / 1000 / 60).toFixed(1)} min</b></div>
