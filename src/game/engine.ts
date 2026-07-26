@@ -176,6 +176,9 @@ export class GameEngine {
   private shield = MAX_SHIELD
   private keys: Record<string, boolean> = {}
 
+  // Admin mode: nothing can hurt the ship (see hurtPlayer / vaporizePlayer).
+  private god = false
+
   // Touch controls (drag to move, auto-fire while touching)
   private touchEnabled = false
   private touchActive = false
@@ -363,6 +366,11 @@ export class GameEngine {
 
   setDifficulty(key: Difficulty) {
     this.diff = DIFFICULTIES[key]
+  }
+
+  /** Admin mode: the ship takes no damage from anything, beams included. */
+  setGodMode(on: boolean) {
+    this.god = on
   }
 
   /** Enable/disable on-canvas touch controls (drag to move, auto-fire). */
@@ -1123,6 +1131,7 @@ export class GameEngine {
    * chew through the rest of your lives while you respawn.
    */
   private vaporizePlayer() {
+    if (this.god) { this.deflect(); return }
     this.shield = 0
     this.lives--
     this.invuln = 2.5
@@ -1139,7 +1148,15 @@ export class GameEngine {
     if (this.lives <= 0) this.endStage('gameOver')
   }
 
+  /** Admin mode's "hit": a green spark, a short grace window, no damage. */
+  private deflect() {
+    this.invuln = 0.35
+    this.shield = MAX_SHIELD
+    this.spawnParticles(this.px, this.py, '#5eff8a', 8)
+  }
+
   private hurtPlayer(wipeShield = false) {
+    if (this.god) { this.deflect(); return }
     // Shields soak up hits first; only when depleted do you lose a life.
     // An asteroid impact (wipeShield) shatters the whole shield at once.
     if (this.shield > 0) {
@@ -2251,6 +2268,14 @@ export class GameEngine {
     ctx.font = `14px ${FONT_UI}`
     ctx.fillStyle = '#7ec8ff'
     ctx.fillText('SHIELD', sbX + sbW + 6, sbY + 7)
+
+    // Admin mode is a cheat — say so on screen so a run is never mistaken
+    // for a legitimate one.
+    if (this.god) {
+      ctx.fillStyle = '#5eff8a'
+      ctx.font = `16px ${FONT_UI}`
+      ctx.fillText('ADMIN · NO DAMAGE', sbX + sbW + 56, sbY + 7)
+    }
 
     // lives as ships
     ctx.font = `22px ${FONT_UI}`

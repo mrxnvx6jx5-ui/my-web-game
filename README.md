@@ -16,6 +16,7 @@ A retro top-down space shooter with a story-mode campaign, built with React + Ty
 - **Laser blasters:** start with the Pulse Laser and unlock a new blaster each time you clear a sector (up to 10). Toggle your active blaster any time in the **Armory** (or with `Q`/`E` and `1`–`9` in-game).
 - **Space gems** give points. Special ammo gems grant temporary power-ups: Rapid Fire, Spread Shot, Plasma Rounds, and Homing Missiles. A rare Med-Kit grants an extra life.
 - **Score** rewards gems collected, aliens blasted, and fast level/boss completion (time bonus).
+- **Admin mode.** The `🛡 ADMIN` button on the title screen takes a password (`dagoat`) and unlocks every sector, every blaster, and full damage immunity, plus jump-straight-in buttons for the Omega Titan and Vorathrax. It's a client-side cheat switch, not security — the password is in the bundle. Admin runs are never submitted to the leaderboard.
 - Synthesized retro sound effects and background music (toggle in the top-right during play).
 
 ### Controls
